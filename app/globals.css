@@ -1,0 +1,124 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --font-sans: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  color-scheme: dark;
+}
+
+@layer base {
+  * {
+    border-color: theme('colors.edge.DEFAULT');
+  }
+
+  html {
+    -webkit-text-size-adjust: 100%;
+  }
+
+  body {
+    background-color: theme('colors.canvas.DEFAULT');
+    color: theme('colors.ink.DEFAULT');
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+
+  /* A visible, high-contrast focus ring on every interactive element. Focus is
+     never removed, only replaced with something better than the default. */
+  :focus-visible {
+    outline: 2px solid theme('colors.accent.DEFAULT');
+    outline-offset: 2px;
+    border-radius: 4px;
+  }
+
+  ::selection {
+    background: theme('colors.accent.wash');
+    color: theme('colors.ink.DEFAULT');
+  }
+
+  ::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+  ::-webkit-scrollbar-track {
+    background: theme('colors.canvas.sunken');
+  }
+  ::-webkit-scrollbar-thumb {
+    background: theme('colors.edge.strong');
+    border-radius: 6px;
+    border: 2px solid theme('colors.canvas.sunken');
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: theme('colors.ink.faint');
+  }
+
+  /* Respect a user's reduced-motion preference rather than animating anyway. */
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+      scroll-behavior: auto !important;
+    }
+  }
+}
+
+@layer components {
+  .skip-link {
+    @apply sr-only;
+  }
+  .skip-link:focus {
+    @apply not-sr-only fixed left-4 top-4 z-50 rounded-md bg-accent px-4 py-2 font-medium text-ink-inverse;
+  }
+
+  .panel {
+    @apply rounded-panel border border-edge bg-canvas-raised shadow-panel;
+  }
+
+  .field {
+    @apply w-full rounded-md border border-edge bg-canvas-sunken px-3 py-2 text-sm text-ink
+           placeholder:text-ink-faint focus:border-accent focus:outline-none
+           focus-visible:outline-2 focus-visible:outline-accent disabled:opacity-50;
+  }
+
+  .prose-answer {
+    @apply text-[15px] leading-relaxed text-ink;
+  }
+  .prose-answer p + p {
+    @apply mt-3;
+  }
+  .prose-answer ul {
+    @apply mt-3 list-disc space-y-1 pl-5;
+  }
+  .prose-answer ol {
+    @apply mt-3 list-decimal space-y-1 pl-5;
+  }
+  .prose-answer strong {
+    @apply font-semibold text-ink;
+  }
+  .prose-answer code {
+    @apply rounded bg-canvas-sunken px-1 py-0.5 font-mono text-[13px] text-accent-soft;
+  }
+}
+
+/* Chart primitives shared by every inline SVG chart. Grid and axis lines stay
+   recessive so the data marks carry the attention. */
+.chart-grid line {
+  stroke: theme('colors.edge.subtle');
+  stroke-width: 1;
+}
+.chart-axis-label {
+  fill: theme('colors.ink.faint');
+  font-size: 11px;
+  font-family: var(--font-mono);
+}
+.chart-mark {
+  transition: opacity 120ms ease;
+}
+.chart-interactive:hover .chart-mark:not(:hover) {
+  opacity: 0.55;
+}
