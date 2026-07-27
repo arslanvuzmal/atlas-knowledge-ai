@@ -1,0 +1,25 @@
+services:
+  postgres:
+    # pgvector ships preinstalled in this image; the app enables the extension
+    # through the first Prisma migration.
+    image: pgvector/pgvector:pg16
+    container_name: atlas-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: atlas
+      POSTGRES_PASSWORD: atlas_local_dev
+      POSTGRES_DB: atlas
+    ports:
+      # 5434 on the host avoids clashing with any other local Postgres.
+      - '5434:5432'
+    volumes:
+      - atlas_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U atlas -d atlas']
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+volumes:
+  atlas_pgdata:
+    name: atlas_pgdata

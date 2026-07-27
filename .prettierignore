@@ -1,0 +1,14 @@
+node_modules
+.next
+out
+dist
+coverage
+test-results
+playwright-report
+storage
+backups
+package-lock.json
+prisma/migrations
+docs/assets
+portfolio/screenshots
+next-env.d.ts
