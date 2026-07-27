@@ -25,9 +25,10 @@ blob-report/
 .env*.local
 !.env.example
 
-# local object storage (uploaded binaries never belong in git)
-storage/
-!storage/.gitkeep
+# Local object storage — uploaded binaries never belong in git.
+# Anchored with a leading slash so it matches only the root directory and not
+# the lib/storage source folder.
+/storage/
 
 # generated demo binaries
 sample-data/generated/
