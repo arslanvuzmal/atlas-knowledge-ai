@@ -1,0 +1,158 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    name: Verify
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    services:
+      postgres:
+        # pgvector is required: the retrieval-index migration creates an HNSW
+        # index, and every retrieval test performs a real vector search.
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: atlas
+          POSTGRES_PASSWORD: atlas_ci
+          POSTGRES_DB: atlas_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U atlas -d atlas_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+
+    env:
+      # CI-only values. No production secret is ever placed in a workflow file.
+      DATABASE_URL: postgresql://atlas:atlas_ci@localhost:5432/atlas_test?schema=public
+      DIRECT_URL: postgresql://atlas:atlas_ci@localhost:5432/atlas_test?schema=public
+      AUTH_SECRET: ci_only_auth_secret_value_not_used_in_production_0000
+      INTERNAL_API_SECRET: ci_only_internal_secret_value_not_used_in_prod_0000
+      DEMO_MODE: 'true'
+      NEXT_PUBLIC_DEMO_MODE: 'true'
+      APP_URL: http://localhost:3000
+      NEXT_PUBLIC_APP_URL: http://localhost:3000
+      STORAGE_PROVIDER: local
+      EMBEDDING_PROVIDER: demo
+      LLM_PROVIDER: demo
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Generate Prisma client
+        run: npx prisma generate
+
+      - name: Apply migrations
+        # `migrate deploy`, never `migrate dev` — the latter treats the pgvector
+        # ANN index as drift and offers to drop it.
+        run: npx prisma migrate deploy
+
+      - name: Seed fictional test data
+        run: npm run db:seed
+
+      - name: Check formatting
+        run: npm run format:check
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Unit tests
+        run: npm run test:unit
+
+      - name: Integration tests
+        run: npm run test:integration
+
+      - name: Retrieval evaluation
+        run: npm run test:retrieval
+
+      - name: Security tests
+        run: npm run test:security
+
+      - name: Production build
+        run: npm run build
+
+  e2e:
+    name: End-to-end
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    needs: verify
+
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: atlas
+          POSTGRES_PASSWORD: atlas_ci
+          POSTGRES_DB: atlas_e2e
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U atlas -d atlas_e2e"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+
+    env:
+      DATABASE_URL: postgresql://atlas:atlas_ci@localhost:5432/atlas_e2e?schema=public
+      DIRECT_URL: postgresql://atlas:atlas_ci@localhost:5432/atlas_e2e?schema=public
+      AUTH_SECRET: ci_only_auth_secret_value_not_used_in_production_0000
+      INTERNAL_API_SECRET: ci_only_internal_secret_value_not_used_in_prod_0000
+      DEMO_MODE: 'true'
+      NEXT_PUBLIC_DEMO_MODE: 'true'
+      APP_URL: http://localhost:3000
+      NEXT_PUBLIC_APP_URL: http://localhost:3000
+      STORAGE_PROVIDER: local
+      EMBEDDING_PROVIDER: demo
+      LLM_PROVIDER: demo
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - run: npm ci
+      - run: npx prisma generate
+      - run: npx prisma migrate deploy
+      - run: npm run db:seed
+
+      - name: Install Playwright browser
+        run: npx playwright install --with-deps chromium
+
+      - name: Build
+        run: npm run build
+
+      - name: End-to-end tests
+        run: npm run test:e2e
+
+      - name: Upload report on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: playwright-report/
+          retention-days: 7
