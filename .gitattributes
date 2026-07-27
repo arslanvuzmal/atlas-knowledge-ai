@@ -1,0 +1,21 @@
+# Normalise line endings so a Windows checkout and a Linux CI runner see the
+# same bytes. Without this, `prettier --check` can pass locally and fail in CI
+# purely because of CRLF.
+* text=auto eol=lf
+
+# Binary — never touched.
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.webp binary
+*.pdf binary
+*.woff binary
+*.woff2 binary
+*.ttf binary
+
+# Generated; excluded from language statistics and from diffs by default.
+package-lock.json linguist-generated=true -diff
+prisma/migrations/**/*.sql linguist-vendored=true
+docs/assets/screenshots/* linguist-documentation=true

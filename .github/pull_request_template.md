@@ -13,7 +13,7 @@
 - [ ] New behaviour has a test that fails without this change
 - [ ] Any security-relevant change has a test asserting the control
 - [ ] No claim added to the README or interface that is not true
-- [ ] Comments explain *why*, not what
+- [ ] Comments explain _why_, not what
 - [ ] Commits authored with my own Git identity
 
 ## Security
