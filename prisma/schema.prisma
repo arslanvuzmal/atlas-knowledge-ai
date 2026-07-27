@@ -1,0 +1,522 @@
+// Atlas Knowledge AI - relational + vector schema.
+// The `embedding` column on DocumentChunk is a pgvector column. Prisma cannot
+// select `Unsupported` columns, so every vector read/write goes through the
+// typed raw-SQL helpers in lib/database/vector.ts.
+
+generator client {
+  provider        = "prisma-client-js"
+  previewFeatures = ["postgresqlExtensions"]
+}
+
+datasource db {
+  provider   = "postgresql"
+  url        = env("DATABASE_URL")
+  directUrl  = env("DIRECT_URL")
+  extensions = [vector]
+}
+
+// ============================================================================
+// Enums
+// ============================================================================
+
+enum Role {
+  PUBLIC
+  CUSTOMER
+  EMPLOYEE
+  MANAGER
+  ADMIN
+}
+
+enum UserStatus {
+  ACTIVE
+  SUSPENDED
+  INVITED
+}
+
+enum Visibility {
+  PUBLIC
+  INTERNAL
+  RESTRICTED
+}
+
+/// Sensitivity classification carried by every document and every chunk.
+/// Retrieval filters on this before the vector search and again after reranking.
+enum AccessLevel {
+  PUBLIC
+  CUSTOMER
+  EMPLOYEE
+  MANAGER
+  ADMIN
+}
+
+enum SourceType {
+  PDF
+  DOCX
+  TXT
+  MARKDOWN
+  CSV
+  WEBSITE
+  FAQ
+  MANUAL_ENTRY
+}
+
+enum DocumentStatus {
+  UPLOADED
+  VALIDATING
+  EXTRACTING
+  CHUNKING
+  EMBEDDING
+  INDEXED
+  FAILED
+  ARCHIVED
+}
+
+enum ProcessingStatus {
+  PENDING
+  RUNNING
+  COMPLETED
+  FAILED
+}
+
+enum ConversationStatus {
+  ACTIVE
+  ESCALATED
+  CLOSED
+}
+
+enum MessageRole {
+  USER
+  ASSISTANT
+  SYSTEM
+}
+
+/// How well a generated answer was supported by retrieved sources.
+enum GroundingLevel {
+  SUPPORTED
+  PARTIALLY_SUPPORTED
+  UNSUPPORTED
+}
+
+enum FeedbackRating {
+  HELPFUL
+  PARTIALLY_HELPFUL
+  NOT_HELPFUL
+}
+
+enum FeedbackReason {
+  INCORRECT_ANSWER
+  MISSING_INFORMATION
+  WRONG_SOURCE
+  OUTDATED_INFORMATION
+  TOO_VAGUE
+  ACCESS_ISSUE
+  OTHER
+}
+
+enum EscalationStatus {
+  OPEN
+  ASSIGNED
+  IN_PROGRESS
+  RESOLVED
+  CLOSED
+}
+
+enum EscalationPriority {
+  LOW
+  NORMAL
+  HIGH
+  URGENT
+}
+
+enum JobStatus {
+  QUEUED
+  RUNNING
+  SUCCEEDED
+  FAILED
+  CANCELLED
+}
+
+enum JobStage {
+  VALIDATION
+  EXTRACTION
+  CHUNKING
+  EMBEDDING
+  INDEXING
+  COMPLETE
+}
+
+enum IntegrationStatus {
+  CONNECTED
+  DISCONNECTED
+  ERROR
+  NOT_CONFIGURED
+}
+
+// ============================================================================
+// Identity and access
+// ============================================================================
+
+model User {
+  id           String     @id @default(cuid())
+  name         String
+  email        String     @unique
+  passwordHash String?
+  externalId   String?    @unique
+  role         Role       @default(CUSTOMER)
+  status       UserStatus @default(ACTIVE)
+  /// Demo accounts can only authenticate while DEMO_MODE is enabled.
+  isDemo       Boolean    @default(false)
+  lastLoginAt  DateTime?
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+
+  sessions           Session[]
+  knowledgeBases     KnowledgeBase[]
+  uploadedDocuments  Document[]        @relation("DocumentUploader")
+  conversations      Conversation[]
+  feedback           Feedback[]
+  escalations        Escalation[]      @relation("EscalationRequester")
+  assignedEscalations Escalation[]     @relation("EscalationAssignee")
+  auditLogs          AuditLog[]
+
+  @@index([role])
+  @@index([status])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  /// SHA-256 of the session token. The raw token exists only in the cookie.
+  tokenHash    String   @unique
+  userId       String
+  expiresAt    DateTime
+  ipHash       String?
+  userAgentHash String?
+  revokedAt    DateTime?
+  createdAt    DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
+}
+
+/// Backs the brute-force lockout. Rows are keyed by a hash of the identifier so
+/// the table never stores a plain email address for failed attempts.
+model LoginAttempt {
+  id           String   @id @default(cuid())
+  identifierHash String
+  successful   Boolean  @default(false)
+  createdAt    DateTime @default(now())
+
+  @@index([identifierHash, createdAt])
+}
+
+// ============================================================================
+// Knowledge sources
+// ============================================================================
+
+model KnowledgeBase {
+  id          String     @id @default(cuid())
+  name        String
+  slug        String     @unique
+  description String?
+  visibility  Visibility @default(INTERNAL)
+  ownerId     String?
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+
+  owner         User?          @relation(fields: [ownerId], references: [id], onDelete: SetNull)
+  documents     Document[]
+  conversations Conversation[]
+
+  @@index([visibility])
+}
+
+model Document {
+  id               String         @id @default(cuid())
+  knowledgeBaseId  String
+  title            String
+  originalFilename String?
+  sourceType       SourceType
+  mimeType         String?
+  storagePath      String?
+  sourceUrl        String?
+  /// SHA-256 of the raw source bytes. Drives duplicate detection.
+  checksum         String
+  status           DocumentStatus @default(UPLOADED)
+  accessLevel      AccessLevel    @default(PUBLIC)
+  language         String         @default("en")
+  fileSize         Int            @default(0)
+  pageCount        Int?
+  chunkCount       Int            @default(0)
+  currentVersion   Int            @default(1)
+  lastError        String?
+  uploadedBy       String?
+  archivedAt       DateTime?
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
+
+  knowledgeBase KnowledgeBase     @relation(fields: [knowledgeBaseId], references: [id], onDelete: Cascade)
+  uploader      User?             @relation("DocumentUploader", fields: [uploadedBy], references: [id], onDelete: SetNull)
+  versions      DocumentVersion[]
+  chunks        DocumentChunk[]
+  jobs          IngestionJob[]
+  citations     Citation[]
+
+  /// The same bytes may legitimately exist in two different knowledge bases,
+  /// but never twice inside one.
+  @@unique([knowledgeBaseId, checksum])
+  @@index([status])
+  @@index([accessLevel])
+  @@index([knowledgeBaseId, status])
+}
+
+model DocumentVersion {
+  id               String           @id @default(cuid())
+  documentId       String
+  version          Int
+  checksum         String
+  storagePath      String?
+  processingStatus ProcessingStatus @default(PENDING)
+  extractedText    String?
+  pageCount        Int?
+  /// Recorded so a provider or model change can be detected as index drift.
+  embeddingProvider String?
+  embeddingModel    String?
+  embeddingDimensions Int?
+  createdAt        DateTime         @default(now())
+
+  document Document        @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  chunks   DocumentChunk[]
+
+  @@unique([documentId, version])
+  @@index([processingStatus])
+}
+
+model DocumentChunk {
+  id                String  @id @default(cuid())
+  documentId        String
+  documentVersionId String
+  chunkIndex        Int
+  content           String
+  tokenCount        Int     @default(0)
+  pageNumber        Int?
+  sectionTitle      String?
+  /// Denormalised from Document so the vector query can filter without a join.
+  accessLevel       AccessLevel
+  knowledgeBaseId   String
+  /// Lowercased term list backing the keyword half of hybrid search.
+  searchText        String  @default("")
+  metadata          Json?
+  embeddingProvider String?
+  embeddingModel    String?
+  embedding         Unsupported("vector(768)")?
+  createdAt         DateTime @default(now())
+
+  document        Document        @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  documentVersion DocumentVersion @relation(fields: [documentVersionId], references: [id], onDelete: Cascade)
+  citations       Citation[]
+
+  @@unique([documentVersionId, chunkIndex])
+  @@index([documentId])
+  @@index([accessLevel])
+  @@index([knowledgeBaseId, accessLevel])
+}
+
+// ============================================================================
+// Conversations
+// ============================================================================
+
+model Conversation {
+  id              String             @id @default(cuid())
+  userId          String?
+  knowledgeBaseId String?
+  title           String             @default("New conversation")
+  status          ConversationStatus @default(ACTIVE)
+  /// Anonymous public-demo sessions are grouped by this instead of a user id.
+  anonymousKey    String?
+  createdAt       DateTime           @default(now())
+  updatedAt       DateTime           @updatedAt
+
+  user          User?          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  knowledgeBase KnowledgeBase? @relation(fields: [knowledgeBaseId], references: [id], onDelete: SetNull)
+  messages      Message[]
+  escalations   Escalation[]
+  retrievalLogs RetrievalLog[]
+
+  @@index([userId, updatedAt])
+  @@index([anonymousKey])
+  @@index([status])
+}
+
+model Message {
+  id             String          @id @default(cuid())
+  conversationId String
+  role           MessageRole
+  content        String
+  confidence     Float?
+  grounded       GroundingLevel?
+  modelProvider  String?
+  modelName      String?
+  latencyMs      Int?
+  /// Set when the prompt-injection detector flagged the source turn.
+  flagged        Boolean         @default(false)
+  createdAt      DateTime        @default(now())
+
+  conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  citations    Citation[]
+  feedback     Feedback[]
+
+  @@index([conversationId, createdAt])
+}
+
+model Citation {
+  id             String   @id @default(cuid())
+  messageId      String
+  documentId     String
+  chunkId        String?
+  pageNumber     Int?
+  sectionTitle   String?
+  excerpt        String
+  relevanceScore Float    @default(0)
+  ordinal        Int      @default(0)
+  createdAt      DateTime @default(now())
+
+  message  Message        @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  document Document       @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  chunk    DocumentChunk? @relation(fields: [chunkId], references: [id], onDelete: SetNull)
+
+  @@index([messageId])
+  @@index([documentId])
+}
+
+model Feedback {
+  id        String          @id @default(cuid())
+  messageId String
+  userId    String?
+  rating    FeedbackRating
+  reason    FeedbackReason?
+  comment   String?
+  reviewed  Boolean         @default(false)
+  createdAt DateTime        @default(now())
+
+  message Message @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  user    User?   @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([rating])
+  @@index([reviewed])
+  @@index([messageId])
+}
+
+model Escalation {
+  id             String             @id @default(cuid())
+  conversationId String
+  userId         String?
+  reason         String
+  summary        String
+  suggestedReply String?
+  priority       EscalationPriority @default(NORMAL)
+  status         EscalationStatus   @default(OPEN)
+  assignedTo     String?
+  resolutionNote String?
+  createdAt      DateTime           @default(now())
+  updatedAt      DateTime           @updatedAt
+
+  conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  user         User?        @relation("EscalationRequester", fields: [userId], references: [id], onDelete: SetNull)
+  assignee     User?        @relation("EscalationAssignee", fields: [assignedTo], references: [id], onDelete: SetNull)
+
+  @@index([status, priority])
+  @@index([conversationId])
+}
+
+// ============================================================================
+// Operations
+// ============================================================================
+
+model IngestionJob {
+  id           String    @id @default(cuid())
+  documentId   String
+  status       JobStatus @default(QUEUED)
+  stage        JobStage  @default(VALIDATION)
+  progress     Int       @default(0)
+  attemptCount Int       @default(0)
+  lastError    String?
+  correlationId String?
+  startedAt    DateTime?
+  completedAt  DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  document Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+
+  @@index([status])
+  @@index([documentId, createdAt])
+}
+
+model RetrievalLog {
+  id                String   @id @default(cuid())
+  conversationId    String?
+  query             String
+  rewrittenQuery    String?
+  /// Chunk ids only. Never chunk text, so the log cannot leak restricted content.
+  retrievedChunkIds String[] @default([])
+  rerankedChunkIds  String[] @default([])
+  candidateCount    Int      @default(0)
+  filteredCount     Int      @default(0)
+  confidence        Float    @default(0)
+  grounding         GroundingLevel?
+  accessLevel       AccessLevel
+  latencyMs         Int      @default(0)
+  traceId           String?
+  createdAt         DateTime @default(now())
+
+  conversation Conversation? @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  @@index([conversationId])
+  @@index([createdAt])
+}
+
+model AuditLog {
+  id           String   @id @default(cuid())
+  userId       String?
+  action       String
+  entityType   String
+  entityId     String?
+  previousData Json?
+  newData      Json?
+  metadata     Json?
+  ipHash       String?
+  createdAt    DateTime @default(now())
+
+  user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([action])
+  @@index([entityType, entityId])
+  @@index([createdAt])
+}
+
+model SystemSetting {
+  id        String   @id @default(cuid())
+  key       String   @unique
+  value     Json
+  updatedBy String?
+  updatedAt DateTime @updatedAt
+
+  @@index([key])
+}
+
+model Integration {
+  id                    String            @id @default(cuid())
+  type                  String
+  name                  String
+  status                IntegrationStatus @default(NOT_CONFIGURED)
+  /// Non-secret metadata only. API keys live in environment variables.
+  configurationMetadata Json?
+  lastCheckedAt         DateTime?
+  createdAt             DateTime          @default(now())
+  updatedAt             DateTime          @updatedAt
+
+  @@unique([type, name])
+  @@index([status])
+}
