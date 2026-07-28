@@ -270,13 +270,14 @@ export async function ingestSource(input: IngestSourceInput): Promise<IngestResu
     // --- Stage 5: persist atomically ----------------------------------------
     await advance(job.id, 'INDEXING');
 
-    await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
-      const created: { chunkId: string; vector: number[] }[] = [];
-
-      for (let index = 0; index < drafts.length; index += 1) {
-        const draft = drafts[index];
-        const chunk = await tx.documentChunk.create({
-          data: {
+    // Round trips inside this transaction are kept to a fixed handful rather
+    // than scaling with chunk count. Creating chunks one at a time was fine
+    // against a local database and exceeded Prisma's interactive-transaction
+    // budget against a remote pooler, where every statement pays real latency.
+    await prisma.$transaction(
+      async (tx: Prisma.TransactionClient) => {
+        await tx.documentChunk.createMany({
+          data: drafts.map((draft) => ({
             documentId: document.id,
             documentVersionId: version.id,
             chunkIndex: draft.chunkIndex,
@@ -290,35 +291,52 @@ export async function ingestSource(input: IngestSourceInput): Promise<IngestResu
             metadata: draft.metadata as Prisma.InputJsonValue,
             embeddingProvider: embedding.provider,
             embeddingModel: embedding.model,
+          })),
+        });
+
+        // `createMany` cannot return ids, so they are read back and matched on
+        // chunkIndex — which is unique per version and is the same key the
+        // embedding vectors are ordered by.
+        const created = await tx.documentChunk.findMany({
+          where: { documentVersionId: version.id },
+          select: { id: true, chunkIndex: true },
+          orderBy: { chunkIndex: 'asc' },
+        });
+
+        await setChunkEmbeddings(
+          created.map((chunk) => ({
+            chunkId: chunk.id,
+            vector: embedding.vectors[chunk.chunkIndex],
+          })),
+          tx,
+        );
+
+        await tx.documentVersion.update({
+          where: { id: version.id },
+          data: {
+            processingStatus: 'COMPLETED',
+            extractedText: extraction.fullText.slice(0, 200_000),
+            pageCount: extraction.pageCount,
+            embeddingProvider: embedding.provider,
+            embeddingModel: embedding.model,
+            embeddingDimensions: embedding.dimensions,
           },
         });
-        created.push({ chunkId: chunk.id, vector: embedding.vectors[index] });
-      }
 
-      await setChunkEmbeddings(created, tx);
-
-      await tx.documentVersion.update({
-        where: { id: version.id },
-        data: {
-          processingStatus: 'COMPLETED',
-          extractedText: extraction.fullText.slice(0, 200_000),
-          pageCount: extraction.pageCount,
-          embeddingProvider: embedding.provider,
-          embeddingModel: embedding.model,
-          embeddingDimensions: embedding.dimensions,
-        },
-      });
-
-      await tx.document.update({
-        where: { id: document.id },
-        data: {
-          status: 'INDEXED',
-          pageCount: extraction.pageCount,
-          chunkCount: drafts.length,
-          lastError: null,
-        },
-      });
-    });
+        await tx.document.update({
+          where: { id: document.id },
+          data: {
+            status: 'INDEXED',
+            pageCount: extraction.pageCount,
+            chunkCount: drafts.length,
+            lastError: null,
+          },
+        });
+      },
+      // Generous relative to the work, because the floor is network latency to
+      // a possibly distant database rather than anything this code controls.
+      { timeout: 120_000, maxWait: 20_000 },
+    );
 
     await prisma.ingestionJob.update({
       where: { id: job.id },

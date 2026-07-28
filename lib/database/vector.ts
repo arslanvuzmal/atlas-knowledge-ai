@@ -58,18 +58,39 @@ export async function setChunkEmbedding(
   `;
 }
 
+/**
+ * Writes many embeddings in as few round trips as possible.
+ *
+ * One statement per chunk is fine against localhost and disastrous against a
+ * remote pooler: a 14-chunk document became 14 sequential round trips inside a
+ * transaction and blew Prisma's 5-second interactive transaction budget. This
+ * batches into a single `UPDATE ... FROM (VALUES ...)`, so latency is paid once
+ * rather than once per chunk.
+ *
+ * Batches are capped because PostgreSQL has a hard 65535 bind-parameter limit
+ * and each chunk contributes two.
+ */
+const EMBEDDING_UPDATE_BATCH = 500;
+
 export async function setChunkEmbeddings(
   entries: { chunkId: string; vector: number[] }[],
   tx?: Prisma.TransactionClient,
 ): Promise<void> {
   const client = tx ?? prisma;
-  // One statement per chunk keeps the parameter count bounded and predictable;
-  // the whole set runs inside the caller's transaction.
-  for (const entry of entries) {
+  if (entries.length === 0) return;
+
+  for (let offset = 0; offset < entries.length; offset += EMBEDDING_UPDATE_BATCH) {
+    const batch = entries.slice(offset, offset + EMBEDDING_UPDATE_BATCH);
+
+    const rows = batch.map(
+      (entry) => Prisma.sql`(${entry.chunkId}, ${toVectorLiteral(entry.vector)}::vector)`,
+    );
+
     await client.$executeRaw`
-      UPDATE "DocumentChunk"
-      SET embedding = ${toVectorLiteral(entry.vector)}::vector
-      WHERE id = ${entry.chunkId}
+      UPDATE "DocumentChunk" AS c
+      SET "embedding" = v.embedding
+      FROM (VALUES ${Prisma.join(rows)}) AS v(id, embedding)
+      WHERE c."id" = v.id
     `;
   }
 }
