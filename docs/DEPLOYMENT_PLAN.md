@@ -2,6 +2,14 @@
 
 Target: **Vercel** for the application, **Supabase** for PostgreSQL with pgvector and for object storage. Both have free tiers sufficient for a demonstration deployment.
 
+> **Deployed and verified** at [atlas-knowledge-ai.vercel.app](https://atlas-knowledge-ai.vercel.app), region `ap-northeast-1`. All 44 end-to-end tests pass against the live URL.
+
+## Two things that cost real time, recorded so they don't again
+
+**PowerShell adds a BOM when piping.** Setting environment variables with `'value' | vercel env add NAME production` from PowerShell 5.1 stores `﻿value`. The application then failed with `Invalid enum value ... received '﻿supabase'`. Environment variables must be set from bash, or with a method that does not prepend a byte-order mark. This is invisible in the Vercel dashboard.
+
+**`connection_limit=1` starves parallel queries.** The common serverless advice is one connection per instance, but the dashboard issues a dozen aggregate queries through `Promise.all`. With a limit of 1 and the default 10-second pool timeout, they queue and time out with `P2024`. `connection_limit=8&pool_timeout=25` is what actually works here.
+
 ---
 
 ## 1. Database

@@ -13,15 +13,15 @@ It runs end to end with **no paid AI credentials** through deterministic demo pr
 
 **Status by stage:**
 
-| Stage                 | State                                                   |
-| --------------------- | ------------------------------------------------------- |
-| Build                 | Complete                                                |
-| Local verification    | Passing — 221 tests + 44 end-to-end, production build   |
-| GitHub publication    | Complete, CI green                                      |
-| Authorship audit      | NOT PRESENT — VERIFIED                                  |
-| Production deployment | **Deployed but non-functional — no database connected** |
+| Stage                 | State                                                 |
+| --------------------- | ----------------------------------------------------- |
+| Build                 | Complete                                              |
+| Local verification    | Passing — 221 tests + 44 end-to-end, production build |
+| GitHub publication    | Complete, CI green                                    |
+| Authorship audit      | NOT PRESENT — VERIFIED                                |
+| Production deployment | **Live and verified**                                 |
 
-The one outstanding item is a production PostgreSQL with pgvector. It requires creating an account, which needs a human.
+Every stage is complete. The demonstration is live at [atlas-knowledge-ai.vercel.app](https://atlas-knowledge-ai.vercel.app).
 
 ## 2. Paths
 
@@ -107,45 +107,54 @@ bot-attributed      : 0
 
 ## 8. Deployment
 
-|                |                                                                 |
-| -------------- | --------------------------------------------------------------- |
-| Platform       | Vercel, team `arslan-vuzmal-lone`                               |
-| Project        | `atlas-knowledge-ai`                                            |
-| Deployment URL | https://atlas-knowledge-7ewmosr3a-arslan-vuzmal-lone.vercel.app |
-| Build          | Succeeded — 44 routes compiled on Vercel                        |
-| SSO protection | Disabled, so the URL is publicly reachable                      |
-| **Runtime**    | **Failing. Every route returns 500.**                           |
+|              |                                                               |
+| ------------ | ------------------------------------------------------------- |
+| Platform     | Vercel, team `arslan-vuzmal-lone`                             |
+| **Live URL** | **https://atlas-knowledge-ai.vercel.app**                     |
+| Database     | Supabase PostgreSQL + pgvector 0.8.2, region `ap-northeast-1` |
+| Storage      | Supabase Storage, private bucket `atlas-documents`            |
+| Worker       | Not applicable by design                                      |
+| Status       | **Live and verified**                                         |
 
-### Why it fails
+### Live verification
 
-No `DATABASE_URL` is configured. Environment validation throws on first use, and every server-rendered route calls it. This is the validation behaving correctly — a misconfigured deployment fails loudly rather than producing subtly wrong retrieval results.
+All **44 end-to-end tests pass against the production URL**, covering every dashboard route, real document ingestion, feedback, escalation, and mobile layout.
 
-Verified by request:
+Additionally confirmed by direct request:
 
 ```
-/             500
-/demo         500
-/login        500
-/api/health   500
-/dashboard    307 → /login → 500
+/                    200
+/demo                200
+/login               200
+/api/health          200
+
+landing page         8 documents · 108 passages · 18 questions, read from the database
+
+supported question   SUPPORTED, confidence 0.855, 3 citations,
+                     all from "Refund and Cancellation Policy"
+
+access control       anonymous asks an EMPLOYEE question  -> UNSUPPORTED, 0 citations, no title leak
+                     anonymous asks a MANAGER question    -> UNSUPPORTED, 0 citations, no title leak
+                     employee signs in, same question     -> SUPPORTED, 4 citations, Employee Handbook
+                     employee asks a MANAGER question     -> UNSUPPORTED, 0 citations, no title leak
+
+unsupported topic    UNSUPPORTED, 0 citations
+prompt injection     UNSUPPORTED, no secret, no system prompt, no restricted title
 ```
 
-**This deployment is not usable and is not being presented as working.**
+The access-control line is the one that matters: an identical question returns a refusal or a cited answer purely according to the caller's role.
 
-### What remains
+### Two deployment defects found and fixed
 
-1. Create a Supabase project (free tier) and run `CREATE EXTENSION IF NOT EXISTS vector;`
-2. Create a private bucket `atlas-documents`
-3. Add to Vercel production: `DATABASE_URL` (pooler, 6543), `DIRECT_URL` (direct, 5432), `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `STORAGE_PROVIDER=supabase`, `APP_URL`, `NEXT_PUBLIC_APP_URL`
-4. `npx prisma migrate deploy` against the direct URL
-5. Seed once with `ALLOW_PRODUCTION_SEED=true`
-6. Redeploy and run the 17 live checks in `docs/DEPLOYMENT_PLAN.md`
+**Ingestion could not survive a remote database.** Chunk persistence ran 2N round trips inside one interactive transaction. Invisible against localhost; against a pooled remote database a 14-chunk document exceeded Prisma's 5-second transaction budget and ingestion failed outright. Rewritten to `createMany` plus a single batched `UPDATE ... FROM (VALUES ...)`, making round trips constant rather than proportional to chunk count. This would have broken **every upload in production**, not merely the seed.
 
-Blocked on account creation, which requires a human. Full runbook in `docs/DEPLOYMENT_PLAN.md`.
+**PowerShell prepended a byte-order mark to environment variables.** Values piped from PowerShell 5.1 were stored as `﻿supabase`, failing enum validation at runtime and returning 500 everywhere. Invisible in the Vercel dashboard. Re-set from bash.
 
-## 9. Environment variables still required
+A third adjustment: `connection_limit=1` — the usual serverless advice — starved the dashboard's parallel aggregate queries into a `P2024` pool timeout. Now `connection_limit=8&pool_timeout=25`.
 
-`DATABASE_URL` · `DIRECT_URL` · `SUPABASE_URL` · `SUPABASE_SERVICE_ROLE_KEY` · `STORAGE_PROVIDER` · `APP_URL` · `NEXT_PUBLIC_APP_URL`
+## 9. Environment variables
+
+All 14 are set in Vercel production and preview. None outstanding.
 
 Already set in Vercel production and preview: `AUTH_SECRET`, `INTERNAL_API_SECRET`, `DEMO_MODE`, `NEXT_PUBLIC_DEMO_MODE`, `EMBEDDING_PROVIDER`, `LLM_PROVIDER`.
 
@@ -176,17 +185,19 @@ Demo embeddings are lexical, not semantic — a pure-synonym paraphrase retrieve
 LOCAL PROJECT:              C:\Users\laptopzone\Desktop\Atlas Knowledge AI
 BACKUP:                     Not required — no pre-existing folder
 GITHUB:                     https://github.com/arslanvuzmal/atlas-knowledge-ai
-LATEST COMMIT:              see `git log -1` (17 commits on main)
+LATEST COMMIT:              see `git log -1` on main
 GIT AUTHOR:                 avuzmal <arslanvuzmallone@gmail.com>
 CLAUDE CONTRIBUTOR STATUS:  NOT PRESENT — VERIFIED
 CI:                         PASSING — verify + end-to-end, both green
-PUBLIC DEPLOYMENT:          DEPLOYED, NOT FUNCTIONAL — no database
-DATABASE:                   NOT PROVISIONED — blocks the deployment
-STORAGE:                    Local adapter locally; Supabase adapter built, unconfigured
+PUBLIC DEPLOYMENT:          LIVE — https://atlas-knowledge-ai.vercel.app
+DATABASE:                   Supabase PostgreSQL + pgvector 0.8.2 (ap-northeast-1)
+                            8 documents · 108 passages · all embedded
+STORAGE:                    Supabase Storage, private bucket atlas-documents
 WORKER:                     Not applicable by design
-TESTS:                      221 passing + 44 end-to-end
+TESTS:                      221 passing + 44 end-to-end, the latter also run
+                            green against the live production URL
 BUILD:                      PASSING locally and on Vercel
 DEMO LOGIN:                 admin@atlasknowledge.demo / AtlasDemo!2026
-KNOWN BLOCKERS:             Production PostgreSQL with pgvector. Requires
-                            account creation, which needs a human.
+                            (also manager@ employee@ customer@ viewer@)
+KNOWN BLOCKERS:             None.
 ```

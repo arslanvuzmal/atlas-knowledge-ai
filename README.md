@@ -4,7 +4,7 @@
 
 **A secure RAG knowledge platform that turns approved documents, websites, policies, manuals and business information into a searchable conversational assistant — with source citations, access controls, feedback analytics and human escalation.**
 
-![Status](https://img.shields.io/badge/status-demo%20ready-00a3c3)
+![Live](https://img.shields.io/badge/demo-live-4fa866)
 ![Tests](https://img.shields.io/badge/tests-221%20passing-4fa866)
 ![E2E](https://img.shields.io/badge/e2e-44%20passing-4fa866)
 ![TypeScript](https://img.shields.io/badge/TypeScript-strict-5a58c2)
@@ -36,7 +36,15 @@ Three properties are structural rather than aspirational:
 
 ## Live demo
 
-> Deployment pending — see [Deployment](#deployment). The application runs locally with no API credentials; see [Quick start](#quick-start).
+### → **[atlas-knowledge-ai.vercel.app](https://atlas-knowledge-ai.vercel.app)**
+
+Running on Vercel with Supabase PostgreSQL + pgvector. No API credentials configured — the deterministic demo providers do the work.
+
+**Try this to see the point of the project.** Ask the public demo at `/demo`:
+
+> _"How many days of annual leave do employees receive?"_
+
+It refuses — that answer lives in an employee-level document. Now sign in as `employee@atlasknowledge.demo` and ask the identical question. It answers, citing the Employee Handbook. Same question, same corpus, different access level.
 
 ### Demo accounts
 
