@@ -66,3 +66,5 @@ next-env.d.ts
 
 # Playwright saved auth sessions
 tests/e2e/.auth/
+
+.vercel
