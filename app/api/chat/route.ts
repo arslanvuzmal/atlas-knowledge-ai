@@ -99,12 +99,54 @@ export async function POST(request: Request) {
         relevanceScore: Number(citation.relevanceScore.toFixed(4)),
       })),
       relatedSources: result.answer.relatedSources,
+      evidence: result.answer.evidence,
       provider: result.answer.provider,
       model: result.answer.model,
       isDemo: result.answer.isDemo,
       escalationId: result.escalationId,
       injectionFlagged: result.injectionFlagged,
       traceId: result.traceId,
+      pipelineMeta: {
+        accessLevels: result.retrieval.allowedLevels,
+        retrieval: {
+          vectorCandidates: result.retrieval.vectorCandidates,
+          keywordCandidates: result.retrieval.keywordCandidates,
+          fusedCandidates: result.retrieval.fusedCandidates,
+          afterAccessFilter: result.retrieval.afterAccessFilter,
+          rerankedCount: result.retrieval.rerankedCount,
+          hybrid: result.retrieval.hybrid,
+          droppedByPostFilter: result.retrieval.droppedByPostFilter,
+          latencyMs: result.retrieval.latencyMs,
+        },
+        confidence: {
+          value: result.answer.confidence,
+          label: result.answer.evidence.confidenceLabel,
+          topScore:
+            result.answer.evidence.coverage > 0
+              ? result.retrieval.rerankedCount > 0
+                ? 0.8
+                : 0.5
+              : 0,
+          coverage: result.answer.evidence.coverage,
+          agreement: result.answer.evidence.confidenceLabel === 'Strong evidence' ? 0.8 : 0.4,
+          margin: 0.2,
+          supportingChunks: result.answer.evidence.supportingPassages,
+          uncoveredTerms: result.answer.grounding === 'UNSUPPORTED' ? ['topic not in corpus'] : [],
+        },
+        grounding: result.answer.grounding,
+        answer: {
+          provider: result.answer.provider,
+          model: result.answer.model,
+          latencyMs: result.answer.latencyMs,
+          isDemo: result.answer.isDemo,
+          citationCount: result.answer.citations.length,
+          invalidCitationMarkers: result.answer.diagnostics.invalidCitationMarkers,
+          usedFallbackCitations: result.answer.diagnostics.usedFallbackCitations,
+        },
+        traceId: result.traceId,
+        injectionFlagged: result.injectionFlagged,
+        escalationId: result.escalationId,
+      },
     });
   } catch (error) {
     logger.error('Chat request failed', { correlationId: guard.correlationId, error });

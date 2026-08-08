@@ -269,16 +269,97 @@ function checkWorker(): ComponentHealth {
   };
 }
 
+async function checkEmbeddingDrift(): Promise<ComponentHealth> {
+  const probe = await timed(async () => {
+    const currentProvider = getEmbeddingProvider();
+    const currentModel = currentProvider.model;
+    const currentDimensions = env().EMBEDDING_DIMENSIONS;
+
+    // Check DocumentVersion for drift (has embeddingDimensions)
+    const drift = await prisma.documentVersion.groupBy({
+      by: ['embeddingProvider', 'embeddingModel', 'embeddingDimensions'],
+      _count: { _all: true },
+      where: {
+        OR: [
+          { embeddingProvider: { not: currentProvider.name } },
+          { embeddingModel: { not: currentModel } },
+          { embeddingDimensions: { not: currentDimensions } },
+        ],
+      },
+    });
+
+    const totalVersions = await prisma.documentVersion.count();
+
+    return {
+      drift,
+      totalVersions,
+      currentProvider: currentProvider.name,
+      currentModel,
+      currentDimensions,
+    };
+  });
+
+  if (probe.error || !probe.value) {
+    return {
+      name: 'Embedding drift detection',
+      state: 'UNAVAILABLE',
+      detail: 'Could not check for embedding drift.',
+      latencyMs: probe.ms,
+    };
+  }
+
+  const { drift, totalVersions, currentProvider, currentModel, currentDimensions } = probe.value;
+
+  if (drift.length > 0) {
+    const driftedVersions = drift.reduce((sum, d) => sum + (d._count?._all ?? 0), 0);
+    const driftDetails = drift
+      .map(
+        (d) =>
+          `${d.embeddingProvider ?? 'unknown'}/${d.embeddingModel ?? 'unknown'}@${d.embeddingDimensions ?? '?'}d (${d._count?._all ?? 0} versions)`,
+      )
+      .join('; ');
+
+    return {
+      name: 'Embedding drift detection',
+      state: 'DEGRADED',
+      detail: `${driftedVersions} of ${totalVersions} document versions use a different embedding provider/model/dimensions than currently configured. Retrieval quality may be degraded. Reprocess affected documents.`,
+      latencyMs: probe.ms,
+      metadata: {
+        currentProvider,
+        currentModel,
+        currentDimensions,
+        driftedVersions,
+        driftDetails,
+        totalVersions,
+      },
+    };
+  }
+
+  return {
+    name: 'Embedding drift detection',
+    state: 'OPERATIONAL',
+    detail: `All ${totalVersions} document versions match the current embedding provider (${currentProvider}/${currentModel}@${currentDimensions}d). No drift detected.`,
+    latencyMs: probe.ms,
+    metadata: {
+      currentProvider,
+      currentModel,
+      currentDimensions,
+      totalVersions,
+    },
+  };
+}
+
 export async function getSystemHealth(): Promise<SystemHealth> {
-  const [database, embeddings, llm, storage, ingestion] = await Promise.all([
+  const [database, embeddings, llm, storage, ingestion, drift] = await Promise.all([
     checkDatabase(),
     checkEmbeddings(),
     checkLlm(),
     checkStorage(),
     checkIngestionQueue(),
+    checkEmbeddingDrift(),
   ]);
 
-  const components = [database, embeddings, llm, storage, ingestion, checkWorker()];
+  const components = [database, embeddings, llm, storage, ingestion, drift, checkWorker()];
 
   const overall = components.reduce<HealthState>((worst, component) => {
     return STATE_SEVERITY[component.state] > STATE_SEVERITY[worst] ? component.state : worst;

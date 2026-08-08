@@ -6,26 +6,21 @@ import { recordAudit } from '@/lib/security/audit';
 
 export const dynamic = 'force-dynamic';
 
-const schema = z.object({
+const updateSchema = z.object({
+  _action: z.literal('update'),
   name: z.string().min(2).max(120),
   description: z.string().max(500).optional(),
   visibility: z.enum(['PUBLIC', 'INTERNAL', 'RESTRICTED']),
 });
 
-function toSlug(name: string): string {
-  return name
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '')
-    .slice(0, 60);
-}
-
-export async function POST(request: Request) {
+export async function PATCH(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const guard = await guardRequest(request, {
     permission: 'knowledgebase:manage',
     rateLimit: 'mutation',
   });
   if (!guard.ok) return guard.response;
+
+  const { id } = await params;
 
   let body: unknown;
   try {
@@ -34,7 +29,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'Malformed request body.' }, { status: 400 });
   }
 
-  const parsed = schema.safeParse(body);
+  const parsed = updateSchema.safeParse(body);
   if (!parsed.success) {
     return NextResponse.json(
       { error: parsed.error.issues[0]?.message ?? 'Invalid request.' },
@@ -42,32 +37,41 @@ export async function POST(request: Request) {
     );
   }
 
-  const baseSlug = toSlug(parsed.data.name) || 'knowledge-base';
-  let slug = baseSlug;
-  for (let attempt = 2; attempt < 50; attempt += 1) {
-    const clash = await prisma.knowledgeBase.findUnique({ where: { slug }, select: { id: true } });
-    if (!clash) break;
-    slug = `${baseSlug}-${attempt}`;
+  const existing = await prisma.knowledgeBase.findUnique({
+    where: { id },
+    select: { name: true, slug: true, description: true, visibility: true, ownerId: true },
+  });
+
+  if (!existing) {
+    return NextResponse.json({ error: 'Knowledge base not found.' }, { status: 404 });
   }
 
-  const created = await prisma.knowledgeBase.create({
+  const updated = await prisma.knowledgeBase.update({
+    where: { id },
     data: {
       name: parsed.data.name,
-      slug,
       description: parsed.data.description ?? null,
       visibility: parsed.data.visibility,
-      ownerId: guard.session.user?.id ?? null,
+    },
+    select: {
+      id: true,
+      name: true,
+      slug: true,
+      description: true,
+      visibility: true,
+      ownerId: true,
     },
   });
 
   await recordAudit({
-    action: 'knowledgebase.create',
+    action: 'knowledgebase.update',
     entityType: 'KnowledgeBase',
-    entityId: created.id,
+    entityId: updated.id,
     userId: guard.session.user?.id ?? null,
-    newData: { name: created.name, slug: created.slug, visibility: created.visibility },
+    previousData: existing,
+    newData: updated,
     ip: guard.ip,
   });
 
-  return NextResponse.json({ ok: true, knowledgeBase: created });
+  return NextResponse.json({ ok: true, knowledgeBase: updated });
 }

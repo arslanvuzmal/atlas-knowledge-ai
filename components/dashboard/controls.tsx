@@ -2,7 +2,12 @@
 
 import { useRouter } from 'next/navigation';
 import { useState } from 'react';
-import type { EscalationStatus, Role, UserStatus } from '@prisma/client';
+import type {
+  EscalationStatus,
+  EscalationResolutionCategory,
+  Role,
+  UserStatus,
+} from '@prisma/client';
 import { apiFetch, cn } from '@/lib/ui';
 import { ROLE_LABELS } from '@/lib/auth/rbac';
 
@@ -18,11 +23,13 @@ export function EscalationControls({
   status,
   assignees,
   assignedTo,
+  resolutionCategory,
 }: {
   escalationId: string;
   status: EscalationStatus;
   assignees: { id: string; name: string }[];
   assignedTo: string | null;
+  resolutionCategory: EscalationResolutionCategory | null;
 }) {
   const router = useRouter();
   const [busy, setBusy] = useState(false);
@@ -51,6 +58,8 @@ export function EscalationControls({
       RESOLVED: { label: 'Close', value: 'CLOSED' },
     };
   const advance = nextStatus[status];
+
+  const showResolutionCategory = status === 'RESOLVED' || status === 'CLOSED';
 
   return (
     <div className="flex flex-wrap items-center gap-2">
@@ -81,6 +90,25 @@ export function EscalationControls({
         >
           {advance.label}
         </button>
+      ) : null}
+
+      {showResolutionCategory ? (
+        <select
+          value={resolutionCategory ?? ''}
+          disabled={busy}
+          onChange={(event) => patch({ resolutionCategory: event.target.value || null })}
+          className="rounded-md border border-edge bg-canvas-sunken px-2 py-1 text-xs text-ink"
+        >
+          <option value="">Resolution category</option>
+          <option value="MISSING_KNOWLEDGE">Missing knowledge</option>
+          <option value="OUTDATED_SOURCE">Outdated source</option>
+          <option value="CONFLICTING_SOURCE">Conflicting source</option>
+          <option value="RETRIEVAL_FAILURE">Retrieval failure</option>
+          <option value="ACCESS_PROBLEM">Access problem</option>
+          <option value="INCORRECT_ANSWER">Incorrect answer</option>
+          <option value="USER_MISUNDERSTANDING">User misunderstanding</option>
+          <option value="OTHER">Other</option>
+        </select>
       ) : null}
 
       {error ? (

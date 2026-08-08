@@ -35,6 +35,17 @@ export interface AskOutput {
   traceId: string;
   injectionFlagged: boolean;
   escalationId: string | null;
+  retrieval: {
+    vectorCandidates: number;
+    keywordCandidates: number;
+    fusedCandidates: number;
+    afterAccessFilter: number;
+    rerankedCount: number;
+    hybrid: boolean;
+    droppedByPostFilter: number;
+    latencyMs: number;
+    allowedLevels: string[];
+  };
 }
 
 const MAX_HISTORY_MESSAGES = 20;
@@ -262,6 +273,32 @@ export async function ask(input: AskInput): Promise<AskOutput> {
     citations: answer.citations.length,
   });
 
+  // Track knowledge gaps from low-confidence or unsupported answers
+  await trackKnowledgeGap({
+    question: input.question,
+    role: input.role,
+    knowledgeBaseId: input.knowledgeBaseId ?? null,
+    retrieval: {
+      confidence: retrieval.confidence.confidence,
+      grounding: retrieval.grounding,
+      chunks: retrieval.chunks.map((c) => ({
+        documentId: c.documentId,
+        documentTitle: c.documentTitle,
+        content: c.content,
+      })),
+    },
+    answer: {
+      grounding: answer.grounding,
+      confidence: answer.confidence,
+      citations: answer.citations.map((c) => ({
+        documentId: c.documentId,
+        documentTitle: c.documentTitle,
+        excerpt: c.excerpt,
+      })),
+    },
+    userId: input.userId ?? null,
+  });
+
   return {
     conversationId,
     messageId: assistantMessage.id,
@@ -269,7 +306,149 @@ export async function ask(input: AskInput): Promise<AskOutput> {
     traceId,
     injectionFlagged,
     escalationId,
+    retrieval: {
+      vectorCandidates: retrieval.stats.vectorCandidates,
+      keywordCandidates: retrieval.stats.keywordCandidates,
+      fusedCandidates: retrieval.stats.fusedCandidates,
+      afterAccessFilter: retrieval.stats.afterAccessFilter,
+      rerankedCount: retrieval.stats.rerankedCount,
+      hybrid: retrieval.stats.hybrid,
+      droppedByPostFilter: retrieval.stats.droppedByPostFilter,
+      latencyMs: retrieval.stats.latencyMs,
+      allowedLevels: retrieval.allowedLevels,
+    },
   };
+}
+
+/**
+ * Detects and tracks knowledge gaps from low-confidence or unsupported answers.
+ * Clusters similar questions to identify recurring knowledge gaps.
+ */
+async function trackKnowledgeGap(input: {
+  question: string;
+  role: Role;
+  knowledgeBaseId: string | null;
+  retrieval: {
+    confidence: number;
+    grounding: string;
+    chunks: { documentId: string; documentTitle: string; content: string }[];
+  };
+  answer: {
+    grounding: string;
+    confidence: number;
+    citations: { documentId: string; documentTitle: string; excerpt: string }[];
+  };
+  userId: string | null;
+}): Promise<void> {
+  const { question, role, knowledgeBaseId, retrieval, answer, userId } = input;
+  void role;
+  void retrieval;
+  void userId;
+
+  // Only track gaps for unsupported or low-confidence answers
+  if (answer.grounding === 'SUPPORTED' && answer.confidence >= 0.7) {
+    return;
+  }
+
+  // Normalize question for clustering
+  const normalizedQuestion = question
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+  if (!normalizedQuestion) return;
+
+  // Find the knowledge base ID if not provided
+  let kbId = knowledgeBaseId;
+  if (!kbId) {
+    const primary = await prisma.knowledgeBase.findFirst({
+      orderBy: { createdAt: 'asc' },
+      select: { id: true },
+    });
+    kbId = primary?.id ?? null;
+  }
+  if (!kbId) return;
+
+  // Check for existing gap with similar question
+  const existingGap = await prisma.knowledgeGap.findFirst({
+    where: {
+      knowledgeBaseId: kbId,
+      status: { in: ['OPEN', 'ACKNOWLEDGED'] },
+    },
+    orderBy: { lastOccurredAt: 'desc' },
+  });
+
+  // Simple similarity check - in production, use embeddings for better clustering
+  const similarGap = existingGap ? await findSimilarGap(normalizedQuestion, kbId) : null;
+
+  if (similarGap) {
+    // Update existing gap
+    await prisma.knowledgeGap.update({
+      where: { id: similarGap.id },
+      data: {
+        occurrenceCount: { increment: 1 },
+        lastOccurredAt: new Date(),
+      },
+    });
+  } else {
+    // Create new knowledge gap
+    const relevantDocs = answer.citations.map((c) => ({
+      documentId: c.documentId,
+      relevanceNote: `Cited in low-confidence answer: ${c.excerpt.slice(0, 200)}`,
+    }));
+
+    await prisma.knowledgeGap.create({
+      data: {
+        knowledgeBaseId: kbId,
+        title: `Knowledge gap: ${question.slice(0, 80)}${question.length > 80 ? '...' : ''}`,
+        description: `Users repeatedly ask about this topic but the knowledge base does not contain sufficient approved information to answer confidently. Grounding: ${answer.grounding}, Confidence: ${(answer.confidence * 100).toFixed(1)}%`,
+        status: 'OPEN',
+        occurrenceCount: 1,
+        suggestedSources: {
+          create: relevantDocs.map((d) => ({
+            documentId: d.documentId,
+            relevanceNote: d.relevanceNote,
+          })),
+        },
+      },
+    });
+  }
+}
+
+/**
+ * Simple text similarity check for gap clustering.
+ * In production, use embedding-based similarity.
+ */
+async function findSimilarGap(
+  normalizedQuestion: string,
+  knowledgeBaseId: string,
+): Promise<{ id: string } | null> {
+  const gaps = await prisma.knowledgeGap.findMany({
+    where: { knowledgeBaseId, status: { in: ['OPEN', 'ACKNOWLEDGED'] } },
+    select: { id: true, title: true },
+  });
+
+  const questionWords = new Set(normalizedQuestion.split(/\s+/).filter((w) => w.length > 3));
+
+  for (const gap of gaps) {
+    const gapWords = new Set(
+      gap.title
+        .toLowerCase()
+        .replace(/[^a-z0-9\s]/g, '')
+        .split(/\s+/)
+        .filter((w) => w.length > 3),
+    );
+
+    const intersection = [...questionWords].filter((w) => gapWords.has(w));
+    const union = new Set([...questionWords, ...gapWords]);
+
+    if (union.size > 0 && intersection.length / union.size > 0.4) {
+      return { id: gap.id };
+    }
+  }
+
+  return null;
 }
 
 /** Compact conversation summary attached to an escalation for the human handler. */

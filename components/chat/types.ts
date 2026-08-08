@@ -1,5 +1,14 @@
 export type Grounding = 'SUPPORTED' | 'PARTIALLY_SUPPORTED' | 'UNSUPPORTED';
 
+export interface EvidencePacket {
+  confidenceLabel: 'Strong evidence' | 'Partial evidence' | 'Insufficient evidence';
+  supportingPassages: number;
+  supportingDocuments: number;
+  coverage: number;
+  conflictDetected: boolean;
+  conflictingDocuments: { documentId: string; title: string; excerpt: string }[];
+}
+
 export interface Citation {
   ordinal: number;
   documentId: string;
@@ -31,6 +40,45 @@ export interface ChatTurn {
   /** Set when the request itself failed rather than the answer being unsupported. */
   errored?: boolean;
   createdAt: string;
+  evidence?: EvidencePacket;
+  pipelineMeta?: PipelineMetadata;
+}
+
+export interface PipelineMetadata {
+  accessLevels: string[];
+  retrieval: {
+    vectorCandidates: number;
+    keywordCandidates: number;
+    fusedCandidates: number;
+    afterAccessFilter: number;
+    rerankedCount: number;
+    hybrid: boolean;
+    droppedByPostFilter: number;
+    latencyMs: number;
+  };
+  confidence: {
+    value: number;
+    label: string;
+    topScore: number;
+    coverage: number;
+    agreement: number;
+    margin: number;
+    supportingChunks: number;
+    uncoveredTerms: string[];
+  };
+  grounding: Grounding;
+  answer: {
+    provider: string;
+    model: string;
+    latencyMs: number;
+    isDemo: boolean;
+    citationCount: number;
+    invalidCitationMarkers: number[];
+    usedFallbackCitations: boolean;
+  };
+  traceId: string;
+  injectionFlagged: boolean;
+  escalationId: string | null;
 }
 
 export interface ChatResponse {
@@ -41,12 +89,14 @@ export interface ChatResponse {
   confidence: number;
   citations: Citation[];
   relatedSources: RelatedSource[];
+  evidence: EvidencePacket;
   provider: string;
   model: string;
   isDemo: boolean;
   escalationId: string | null;
   injectionFlagged: boolean;
   traceId: string;
+  pipelineMeta?: PipelineMetadata;
 }
 
 export const GROUNDING_META: Record<

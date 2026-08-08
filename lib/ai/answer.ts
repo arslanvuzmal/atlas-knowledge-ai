@@ -9,6 +9,7 @@ import {
 import { LlmError, publicMessageForLlmError, type ChatMessage } from '@/lib/ai/types';
 import type { ConversationTurn } from '@/lib/retrieval/query';
 import type { RetrievalResult } from '@/lib/retrieval/search';
+import type { RerankedChunk } from '@/lib/reranking';
 import { suggestRelatedSources } from '@/lib/retrieval/search';
 import type { RetrievalSettings } from '@/lib/retrieval/settings';
 import type { Role } from '@prisma/client';
@@ -39,6 +40,21 @@ export interface AnswerRequest {
   traceId?: string;
 }
 
+export interface EvidencePacket {
+  /** Plain-language description of evidence strength. */
+  confidenceLabel: 'Strong evidence' | 'Partial evidence' | 'Insufficient evidence';
+  /** Number of distinct passages cited. */
+  supportingPassages: number;
+  /** Number of distinct documents cited. */
+  supportingDocuments: number;
+  /** Coverage of question terms in the evidence (0-1). */
+  coverage: number;
+  /** Whether approved sources contain contradictory information on the topic. */
+  conflictDetected: boolean;
+  /** Documents involved in a conflict, if detected. */
+  conflictingDocuments: { documentId: string; title: string; excerpt: string }[];
+}
+
 export interface AnswerResult {
   text: string;
   grounding: GroundingLevel;
@@ -52,6 +68,8 @@ export interface AnswerResult {
   escalationSuggested: boolean;
   escalationReason: string | null;
   relatedSources: { documentId: string; title: string; sectionTitle: string | null }[];
+  /** Rich evidence packet for the UI. */
+  evidence: EvidencePacket;
   diagnostics: {
     invalidCitationMarkers: number[];
     usedFallbackCitations: boolean;
@@ -76,6 +94,129 @@ function buildHistoryMessages(history: ConversationTurn[], limit: number): ChatM
           ? turn.content.replace(/\[\d{1,2}\]/g, '').slice(0, 1200)
           : turn.content.slice(0, 1200),
     }));
+}
+
+/**
+ * Detects contradictory information across retrieved sources.
+ *
+ * This is a heuristic: it looks for passages that make opposing claims
+ * about the same entities/quantities. It is not authoritative—conflicts
+ * are flagged for human review rather than automatically resolved.
+ */
+function detectConflicts(
+  chunks: RerankedChunk[],
+  question: string,
+): {
+  detected: boolean;
+  conflictingDocuments: { documentId: string; title: string; excerpt: string }[];
+} {
+  if (chunks.length < 2) return { detected: false, conflictingDocuments: [] };
+
+  // Extract key terms from the question that indicate a specific factual query
+  const questionTerms = question
+    .toLowerCase()
+    .split(/\s+/)
+    .filter((t) => t.length > 3);
+  if (questionTerms.length === 0) return { detected: false, conflictingDocuments: [] };
+
+  // Group chunks by document
+  const byDocument = new Map<string, RerankedChunk[]>();
+  for (const chunk of chunks) {
+    const existing = byDocument.get(chunk.documentId) ?? [];
+    existing.push(chunk);
+    byDocument.set(chunk.documentId, existing);
+  }
+
+  // Simple conflict heuristic: look for numeric discrepancies in passages
+  // that address the same question terms
+  const numberPattern =
+    /\b(\d+(?:[.,]\d+)?)\s*(days?|hours?|months?|years?|percent|%|\$|USD|GB|MB|KB|TB|users?|seats?|licenses?)\b/gi;
+  const numericClaims = new Map<
+    string,
+    { documentId: string; title: string; value: string; context: string }[]
+  >();
+
+  for (const [docId, docChunks] of byDocument) {
+    const docTitle = docChunks[0].documentTitle;
+    for (const chunk of docChunks) {
+      const matches = chunk.content.matchAll(numberPattern);
+      for (const match of matches) {
+        const fullMatch = match[0];
+        const key = fullMatch.toLowerCase().replace(/\s+/g, ' ');
+        const existing = numericClaims.get(key) ?? [];
+        existing.push({
+          documentId: docId,
+          title: docTitle,
+          value: fullMatch,
+          context: chunk.content.slice(
+            Math.max(0, match.index! - 80),
+            match.index! + fullMatch.length + 80,
+          ),
+        });
+        numericClaims.set(key, existing);
+      }
+    }
+  }
+
+  // Check if the same unit has different values across documents
+  const conflictingDocuments: { documentId: string; title: string; excerpt: string }[] = [];
+  const seenDocs = new Set<string>();
+
+  for (const [, claims] of numericClaims) {
+    if (claims.length < 2) continue;
+    const uniqueValues = new Set(claims.map((c) => c.value));
+    if (uniqueValues.size > 1) {
+      for (const claim of claims) {
+        if (!seenDocs.has(claim.documentId)) {
+          seenDocs.add(claim.documentId);
+          conflictingDocuments.push({
+            documentId: claim.documentId,
+            title: claim.title,
+            excerpt: claim.context.trim(),
+          });
+        }
+      }
+    }
+  }
+
+  // Also check for direct contradictory language (allows/denies, required/optional, etc.)
+  const contradictionPairs = [
+    ['allows', 'does not allow'],
+    ['permits', 'prohibits'],
+    ['required', 'optional'],
+    ['must', 'must not'],
+    ['shall', 'shall not'],
+    ['is', 'is not'],
+    ['includes', 'excludes'],
+    ['covers', 'does not cover'],
+  ];
+
+  const lowerChunks = chunks.map((c) => c.content.toLowerCase());
+  for (const [positive, negative] of contradictionPairs) {
+    const hasPositive = lowerChunks.some((c) => c.includes(positive));
+    const hasNegative = lowerChunks.some((c) => c.includes(negative));
+    if (hasPositive && hasNegative) {
+      // Find which documents have which
+      for (const chunk of chunks) {
+        const lower = chunk.content.toLowerCase();
+        if (lower.includes(positive) || lower.includes(negative)) {
+          if (!seenDocs.has(chunk.documentId)) {
+            seenDocs.add(chunk.documentId);
+            conflictingDocuments.push({
+              documentId: chunk.documentId,
+              title: chunk.documentTitle,
+              excerpt: chunk.content.slice(0, 200).trim(),
+            });
+          }
+        }
+      }
+    }
+  }
+
+  return {
+    detected: conflictingDocuments.length >= 2,
+    conflictingDocuments: conflictingDocuments.slice(0, 4),
+  };
 }
 
 function unsupportedAnswer(
@@ -106,6 +247,7 @@ export async function generateAnswer(request: AnswerRequest): Promise<AnswerResu
   // --- 1. Unsupported short-circuit -----------------------------------------
   if (retrieval.grounding === 'UNSUPPORTED' || retrieval.chunks.length === 0) {
     const { text, related } = unsupportedAnswer(retrieval, role);
+    const evidence = buildEvidencePacket(retrieval, [], false);
     return {
       text,
       grounding: 'UNSUPPORTED',
@@ -121,6 +263,7 @@ export async function generateAnswer(request: AnswerRequest): Promise<AnswerResu
           ? 'No approved source matched the question.'
           : 'Retrieval confidence was below the configured threshold.',
       relatedSources: related,
+      evidence,
       diagnostics: {
         invalidCitationMarkers: [],
         usedFallbackCitations: false,
@@ -163,6 +306,7 @@ export async function generateAnswer(request: AnswerRequest): Promise<AnswerResu
     generationFailed = true;
     rawText = publicMessageForLlmError(error);
 
+    const evidence = buildEvidencePacket(retrieval, [], true);
     return {
       text: rawText,
       grounding: 'UNSUPPORTED',
@@ -177,6 +321,7 @@ export async function generateAnswer(request: AnswerRequest): Promise<AnswerResu
         error instanceof LlmError ? error.kind : 'unknown error'
       }.`,
       relatedSources: suggestRelatedSources(retrieval.chunks, role, 3),
+      evidence,
       diagnostics: {
         invalidCitationMarkers: [],
         usedFallbackCitations: false,
@@ -237,6 +382,23 @@ export async function generateAnswer(request: AnswerRequest): Promise<AnswerResu
     escalationReason = 'The generated answer referenced sources that were not retrieved.';
   }
 
+  // --- 6. Build evidence packet with conflict detection ----------------------
+  const conflict = detectConflicts(retrieval.chunks, request.question);
+  if (conflict.detected) {
+    logger.warn('Contradictory approved sources detected', {
+      question: request.question,
+      conflictingDocuments: conflict.conflictingDocuments.map((d) => d.title),
+      traceId: request.traceId,
+    });
+  }
+
+  const evidence = buildEvidencePacket(
+    retrieval,
+    citations,
+    conflict.detected,
+    conflict.conflictingDocuments,
+  );
+
   return {
     text: validated.text.length > 0 ? validated.text : UNSUPPORTED_ANSWER,
     grounding,
@@ -250,6 +412,7 @@ export async function generateAnswer(request: AnswerRequest): Promise<AnswerResu
     escalationReason,
     relatedSources:
       grounding === 'UNSUPPORTED' ? suggestRelatedSources(retrieval.chunks, role, 3) : [],
+    evidence,
     diagnostics: {
       invalidCitationMarkers: validated.invalidMarkers,
       usedFallbackCitations,
@@ -257,6 +420,33 @@ export async function generateAnswer(request: AnswerRequest): Promise<AnswerResu
       truncatedSources: prompt.truncatedSources,
       generationFailed,
     },
+  };
+}
+
+/**
+ * Builds the evidence packet for the UI.
+ */
+function buildEvidencePacket(
+  retrieval: RetrievalResult,
+  citations: ValidatedCitation[],
+  conflictDetected: boolean,
+  conflictingDocuments: { documentId: string; title: string; excerpt: string }[] = [],
+): EvidencePacket {
+  const supportingPassages = citations.length;
+  const supportingDocuments = new Set(citations.map((c) => c.documentId)).size;
+  const coverage = retrieval.confidence.coverage;
+
+  let confidenceLabel: EvidencePacket['confidenceLabel'] = 'Insufficient evidence';
+  if (coverage >= 0.6 && supportingPassages >= 2) confidenceLabel = 'Strong evidence';
+  else if (coverage >= 0.3 || supportingPassages >= 1) confidenceLabel = 'Partial evidence';
+
+  return {
+    confidenceLabel,
+    supportingPassages,
+    supportingDocuments,
+    coverage: Number(coverage.toFixed(2)),
+    conflictDetected,
+    conflictingDocuments,
   };
 }
 

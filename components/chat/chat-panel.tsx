@@ -14,7 +14,14 @@ import { ConfidenceMeter } from '@/components/dashboard/charts';
 import { CitationCard } from './citation-card';
 import { SourceDrawer } from './source-drawer';
 import { EscalationButton, FeedbackControls } from './feedback-controls';
-import { GROUNDING_META, type ChatResponse, type ChatTurn, type Citation } from './types';
+import {
+  GROUNDING_META,
+  type ChatResponse,
+  type ChatTurn,
+  type Citation,
+  type EvidencePacket,
+  type PipelineMetadata,
+} from './types';
 
 /**
  * The conversational surface.
@@ -34,6 +41,7 @@ interface ChatPanelProps {
   roleLabel: string;
   reachLabel: string;
   demoMode: boolean;
+  onPipelineMeta?: (meta: PipelineMetadata) => void;
 }
 
 const MAX_LENGTH = 2000;
@@ -46,6 +54,7 @@ export function ChatPanel({
   roleLabel,
   reachLabel,
   demoMode,
+  onPipelineMeta,
 }: ChatPanelProps) {
   const [turns, setTurns] = useState<ChatTurn[]>(initialTurns);
   const [input, setInput] = useState('');
@@ -115,6 +124,9 @@ export function ChatPanel({
 
       const data = result.data;
       setConversationId(data.conversationId);
+      if (data.pipelineMeta) {
+        onPipelineMeta?.(data.pipelineMeta);
+      }
       setTurns((current) => [
         ...current,
         {
@@ -130,11 +142,22 @@ export function ChatPanel({
           model: data.model,
           isDemo: data.isDemo,
           createdAt: new Date().toISOString(),
+          evidence: data.evidence,
+          pipelineMeta: data.pipelineMeta,
         },
       ]);
     },
-    [conversationId, phase],
+    [conversationId, phase, onPipelineMeta],
   );
+
+  // Listen for demo page questions
+  useEffect(() => {
+    function handleDemoAsk(event: CustomEvent<{ question: string }>) {
+      void send(event.detail.question);
+    }
+    window.addEventListener('demo:ask', handleDemoAsk as EventListener);
+    return () => window.removeEventListener('demo:ask', handleDemoAsk as EventListener);
+  }, [send]);
 
   function handleSubmit(event: FormEvent) {
     event.preventDefault();
@@ -339,6 +362,71 @@ function AnswerBody({ content }: { content: string }) {
   );
 }
 
+function EvidencePanel({ evidence }: { evidence: EvidencePacket }) {
+  const conflict = evidence.conflictDetected;
+  const conflictDocs = evidence.conflictingDocuments;
+
+  return (
+    <div className="mt-5 rounded-md border border-edge bg-canvas-sunken p-3">
+      <div className="flex flex-wrap items-start gap-3">
+        <div className="flex-1 min-w-0">
+          <p className="text-[11px] font-semibold uppercase tracking-wider text-ink-faint">
+            Evidence
+          </p>
+          <div className="mt-1.5 flex flex-wrap items-center gap-2 text-sm text-ink-muted">
+            <span className="rounded-full bg-accent-wash px-2 py-0.5 font-mono text-[11px] text-accent-soft">
+              {evidence.confidenceLabel}
+            </span>
+            <span className="text-ink-faint">·</span>
+            <span>
+              {evidence.supportingPassages} passage{evidence.supportingPassages !== 1 ? 's' : ''}
+            </span>
+            <span className="text-ink-faint">·</span>
+            <span>
+              {evidence.supportingDocuments} document{evidence.supportingDocuments !== 1 ? 's' : ''}
+            </span>
+            <span className="text-ink-faint">·</span>
+            <span>{Math.round(evidence.coverage * 100)}% question coverage</span>
+          </div>
+          {conflict && conflictDocs.length > 0 ? (
+            <div className="mt-3 p-3 rounded-md border border-status-warning/40 bg-status-warning/10">
+              <p className="text-sm font-medium text-status-warning flex items-center gap-1.5">
+                <svg width="14" height="14" viewBox="0 0 20 20" fill="none" aria-hidden="true">
+                  <path
+                    d="M10 2a8 8 0 100 16 8 8 0 000-16zM10 6v6m0 4v.01"
+                    stroke="currentColor"
+                    strokeWidth="1.5"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
+                </svg>
+                Conflicting approved sources detected
+              </p>
+              <p className="mt-1.5 text-xs text-ink-muted">
+                Multiple approved documents appear to contain contradictory information on this
+                topic. A human should review before relying on this answer.
+              </p>
+              <ul className="mt-2 space-y-1">
+                {conflictDocs.map((doc, index) => (
+                  <li
+                    key={doc.documentId}
+                    className="text-xs text-ink-muted flex items-start gap-1.5"
+                  >
+                    <span className="font-mono text-status-warning">{index + 1}.</span>
+                    <span className="font-medium">{doc.title}</span>
+                    <span className="text-ink-faint">—</span>
+                    <span className="line-clamp-1">{doc.excerpt}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ) : null}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function AssistantTurn({
   turn,
   onOpenCitation,
@@ -382,6 +470,8 @@ function AssistantTurn({
 
       <div className="px-4 py-4">
         <AnswerBody content={turn.content} />
+
+        {turn.evidence && <EvidencePanel evidence={turn.evidence} />}
 
         {turn.citations && turn.citations.length > 0 ? (
           <div className="mt-5">

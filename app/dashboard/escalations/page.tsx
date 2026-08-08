@@ -170,6 +170,7 @@ export default async function EscalationsPage({
                       status={escalation.status}
                       assignees={assignees}
                       assignedTo={escalation.assignedTo}
+                      resolutionCategory={escalation.resolutionCategory}
                     />
                   ) : null}
                 </div>

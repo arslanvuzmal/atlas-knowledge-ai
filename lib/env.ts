@@ -95,6 +95,15 @@ const schema = z.object({
   WORKER_URL: optionalSecret,
   WORKER_INTERNAL_SECRET: optionalSecret,
 
+  RATE_LIMIT_BACKEND: z.enum(['memory', 'database']).default('memory'),
+
+  RETENTION_CONVERSATIONS_DAYS: intish(365, 1, 3650),
+  RETENTION_RETRIEVAL_LOGS_DAYS: intish(90, 1, 3650),
+  RETENTION_AUDIT_LOGS_DAYS: intish(365, 1, 3650),
+  RETENTION_FEEDBACK_DAYS: intish(365, 1, 3650),
+  RETENTION_ESCALATIONS_DAYS: intish(365, 1, 3650),
+  RETENTION_MESSAGES_DAYS: intish(365, 1, 3650),
+
   MAX_UPLOAD_SIZE_MB: intish(15, 1, 100),
   DEFAULT_CHUNK_SIZE: intish(800, 200, 4000),
   DEFAULT_CHUNK_OVERLAP: intish(120, 0, 1000),

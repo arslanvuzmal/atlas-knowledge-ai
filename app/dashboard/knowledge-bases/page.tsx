@@ -66,7 +66,7 @@ export default async function KnowledgeBasesPage() {
                 <tr key={base.id}>
                   <Cell>
                     <Link
-                      href="/dashboard/documents"
+                      href={`/dashboard/knowledge-bases/${base.id}`}
                       className="font-medium text-ink hover:text-accent"
                     >
                       {base.name}

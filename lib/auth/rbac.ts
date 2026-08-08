@@ -88,6 +88,9 @@ export const PERMISSIONS = [
   'audit:read',
   'health:read',
   'demo:reset',
+  'evaluation:read',
+  'evaluation:manage',
+  'settings:retention:manage',
 ] as const;
 
 export type Permission = (typeof PERMISSIONS)[number];
@@ -123,6 +126,8 @@ const MANAGER_PERMISSIONS: Permission[] = [
   'settings:models:read',
   'user:read',
   'health:read',
+  'evaluation:read',
+  'evaluation:manage',
 ];
 
 const ADMIN_PERMISSIONS: Permission[] = [...PERMISSIONS];

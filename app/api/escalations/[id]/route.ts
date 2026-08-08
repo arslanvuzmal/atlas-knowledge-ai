@@ -11,6 +11,18 @@ const schema = z.object({
   priority: z.enum(['LOW', 'NORMAL', 'HIGH', 'URGENT']).optional(),
   assignedTo: z.string().cuid().nullish(),
   resolutionNote: z.string().max(4000).nullish(),
+  resolutionCategory: z
+    .enum([
+      'MISSING_KNOWLEDGE',
+      'OUTDATED_SOURCE',
+      'CONFLICTING_SOURCE',
+      'RETRIEVAL_FAILURE',
+      'ACCESS_PROBLEM',
+      'INCORRECT_ANSWER',
+      'USER_MISUNDERSTANDING',
+      'OTHER',
+    ])
+    .nullish(),
 });
 
 export async function PATCH(request: Request, context: { params: Promise<{ id: string }> }) {
@@ -58,6 +70,8 @@ export async function PATCH(request: Request, context: { params: Promise<{ id: s
   if (parsed.data.priority !== undefined) data.priority = parsed.data.priority;
   if (parsed.data.assignedTo !== undefined) data.assignedTo = parsed.data.assignedTo;
   if (parsed.data.resolutionNote !== undefined) data.resolutionNote = parsed.data.resolutionNote;
+  if (parsed.data.resolutionCategory !== undefined)
+    data.resolutionCategory = parsed.data.resolutionCategory;
 
   // Assigning without an explicit status moves it out of the OPEN queue, which
   // is what the person doing the assigning means.
@@ -96,6 +110,7 @@ export async function PATCH(request: Request, context: { params: Promise<{ id: s
       status: existing.status,
       priority: existing.priority,
       assignedTo: existing.assignedTo,
+      resolutionCategory: existing.resolutionCategory,
     },
     newData: data,
     ip: guard.ip,

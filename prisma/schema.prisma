@@ -128,6 +128,17 @@ enum EscalationPriority {
   URGENT
 }
 
+enum EscalationResolutionCategory {
+  MISSING_KNOWLEDGE
+  OUTDATED_SOURCE
+  CONFLICTING_SOURCE
+  RETRIEVAL_FAILURE
+  ACCESS_PROBLEM
+  INCORRECT_ANSWER
+  USER_MISUNDERSTANDING
+  OTHER
+}
+
 enum JobStatus {
   QUEUED
   RUNNING
@@ -216,7 +227,7 @@ model LoginAttempt {
 // ============================================================================
 
 model KnowledgeBase {
-  id          String     @id @default(cuid())
+  id              String     @id @default(cuid())
   name        String
   slug        String     @unique
   description String?
@@ -225,9 +236,12 @@ model KnowledgeBase {
   createdAt   DateTime   @default(now())
   updatedAt   DateTime   @updatedAt
 
-  owner         User?          @relation(fields: [ownerId], references: [id], onDelete: SetNull)
-  documents     Document[]
-  conversations Conversation[]
+  owner              User?                  @relation(fields: [ownerId], references: [id], onDelete: SetNull)
+  documents          Document[]
+  conversations      Conversation[]
+  knowledgeGaps      KnowledgeGap[]
+  knowledgeConflicts KnowledgeConflict[]
+  evaluations        Evaluation[]
 
   @@index([visibility])
 }
@@ -262,9 +276,11 @@ model Document {
   chunks        DocumentChunk[]
   jobs          IngestionJob[]
   citations     Citation[]
+  gapSuggestions     KnowledgeGapSuggestion[]
+  authoritativeConflicts KnowledgeConflict[] @relation("AuthoritativeConflictDoc")
+  supersededConflicts    KnowledgeConflict[] @relation("SupersededConflictDoc")
+  conflictDocs   KnowledgeConflictDoc[]
 
-  /// The same bytes may legitimately exist in two different knowledge bases,
-  /// but never twice inside one.
   @@unique([knowledgeBaseId, checksum])
   @@index([status])
   @@index([accessLevel])
@@ -409,18 +425,19 @@ model Feedback {
 }
 
 model Escalation {
-  id             String             @id @default(cuid())
-  conversationId String
-  userId         String?
-  reason         String
-  summary        String
-  suggestedReply String?
-  priority       EscalationPriority @default(NORMAL)
-  status         EscalationStatus   @default(OPEN)
-  assignedTo     String?
-  resolutionNote String?
-  createdAt      DateTime           @default(now())
-  updatedAt      DateTime           @updatedAt
+  id                 String                       @id @default(cuid())
+  conversationId     String
+  userId             String?
+  reason             String
+  summary            String
+  suggestedReply     String?
+  priority           EscalationPriority           @default(NORMAL)
+  status             EscalationStatus             @default(OPEN)
+  assignedTo         String?
+  resolutionNote     String?
+  resolutionCategory EscalationResolutionCategory?
+  createdAt          DateTime                     @default(now())
+  updatedAt          DateTime                     @updatedAt
 
   conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
   user         User?        @relation("EscalationRequester", fields: [userId], references: [id], onDelete: SetNull)
@@ -518,5 +535,128 @@ model Integration {
   updatedAt             DateTime          @updatedAt
 
   @@unique([type, name])
+  @@index([status])
+}
+
+// ============================================================================
+// Knowledge Health
+// ============================================================================
+
+enum KnowledgeGapStatus {
+  OPEN
+  ACKNOWLEDGED
+  RESOLVED
+  IGNORED
+}
+
+model KnowledgeGap {
+  id                String              @id @default(cuid())
+  knowledgeBaseId   String
+  title             String
+  description       String?
+  status            KnowledgeGapStatus  @default(OPEN)
+  occurrenceCount   Int                 @default(1)
+  lastOccurredAt    DateTime            @default(now())
+  firstDetectedAt   DateTime            @default(now())
+  resolvedAt        DateTime?
+  resolutionNote    String?
+  knowledgeBase     KnowledgeBase       @relation(fields: [knowledgeBaseId], references: [id], onDelete: Cascade)
+  suggestedSources  KnowledgeGapSuggestion[]
+
+  @@index([knowledgeBaseId, status])
+  @@index([status])
+}
+
+model KnowledgeGapSuggestion {
+  id              String        @id @default(cuid())
+  knowledgeGapId  String
+  documentId      String
+  relevanceNote   String?
+  knowledgeGap    KnowledgeGap  @relation(fields: [knowledgeGapId], references: [id], onDelete: Cascade)
+  document        Document      @relation(fields: [documentId], references: [id], onDelete: Cascade)
+
+  @@unique([knowledgeGapId, documentId])
+}
+
+enum KnowledgeConflictStatus {
+  OPEN
+  IN_REVIEW
+  RESOLVED
+  DISMISSED
+}
+
+model KnowledgeConflict {
+  id                String                  @id @default(cuid())
+  knowledgeBaseId   String
+  title             String
+  description       String?
+  status            KnowledgeConflictStatus @default(OPEN)
+  authoritativeDocId String?
+  supersededDocId   String?
+  resolutionNote    String?
+  createdAt         DateTime                @default(now())
+  updatedAt         DateTime                @updatedAt
+  resolvedAt        DateTime?
+  knowledgeBase     KnowledgeBase           @relation(fields: [knowledgeBaseId], references: [id], onDelete: Cascade)
+  authoritativeDoc  Document?               @relation("AuthoritativeConflictDoc", fields: [authoritativeDocId], references: [id], onDelete: SetNull)
+  supersededDoc     Document?               @relation("SupersededConflictDoc", fields: [supersededDocId], references: [id], onDelete: SetNull)
+  conflictingDocs   KnowledgeConflictDoc[]
+
+  @@index([knowledgeBaseId, status])
+  @@index([status])
+}
+
+model KnowledgeConflictDoc {
+  id                String            @id @default(cuid())
+  knowledgeConflictId String
+  documentId        String
+  excerpt           String
+  knowledgeConflict KnowledgeConflict @relation(fields: [knowledgeConflictId], references: [id], onDelete: Cascade)
+  document          Document          @relation(fields: [documentId], references: [id], onDelete: Cascade)
+
+  @@unique([knowledgeConflictId, documentId])
+}
+
+// ============================================================================
+// Evaluations
+// ============================================================================
+
+enum EvaluationRunStatus {
+  PENDING
+  RUNNING
+  COMPLETED
+  FAILED
+}
+
+model Evaluation {
+  id              String            @id @default(cuid())
+  knowledgeBaseId String
+  name            String
+  description     String?
+  testCases       Json
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
+
+  knowledgeBase   KnowledgeBase     @relation(fields: [knowledgeBaseId], references: [id], onDelete: Cascade)
+  runs            EvaluationRun[]
+
+  @@index([knowledgeBaseId])
+}
+
+model EvaluationRun {
+  id              String              @id @default(cuid())
+  evaluationId    String
+  status          EvaluationRunStatus @default(PENDING)
+  total           Int                 @default(0)
+  passed          Int                 @default(0)
+  failed          Int                 @default(0)
+  error           String?
+  durationMs      Int?
+  createdAt       DateTime            @default(now())
+  completedAt     DateTime?
+
+  evaluation      Evaluation          @relation(fields: [evaluationId], references: [id], onDelete: Cascade)
+
+  @@index([evaluationId])
   @@index([status])
 }
