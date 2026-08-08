@@ -103,6 +103,21 @@
   .prose-answer code {
     @apply rounded bg-canvas-sunken px-1 py-0.5 font-mono text-[13px] text-accent-soft;
   }
+
+  .animate-slide-in {
+    animation: slideIn 200ms ease-out;
+  }
+
+  @keyframes slideIn {
+    from {
+      opacity: 0;
+      transform: translateX(100%);
+    }
+    to {
+      opacity: 1;
+      transform: translateX(0);
+    }
+  }
 }
 
 /* Chart primitives shared by every inline SVG chart. Grid and axis lines stay

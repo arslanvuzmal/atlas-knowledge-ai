@@ -50,6 +50,10 @@ export const AUDIT_ACTIONS = [
   'demo.reset',
   'security.rate-limit',
   'security.unauthorised',
+  'evaluation.create',
+  'evaluation.update',
+  'evaluation.delete',
+  'evaluation.run',
 ] as const;
 
 export type AuditAction = (typeof AUDIT_ACTIONS)[number];

@@ -34,6 +34,7 @@ export const RATE_LIMITS = {
   urlIngest: { windowMs: 10 * 60_000, max: 10 },
   feedback: { windowMs: 60_000, max: 30 },
   mutation: { windowMs: 60_000, max: 60 },
+  api: { windowMs: 60_000, max: 120 },
 } as const satisfies Record<string, RateLimitRule>;
 
 export type RateLimitName = keyof typeof RATE_LIMITS;
