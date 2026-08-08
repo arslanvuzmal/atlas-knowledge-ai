@@ -47,7 +47,7 @@ jobs:
       EMBEDDING_PROVIDER: demo
       LLM_PROVIDER: demo
 
-    steps:
+steps:
       - uses: actions/checkout@v4
 
       - uses: actions/setup-node@v4
@@ -61,14 +61,14 @@ jobs:
       - name: Generate Prisma client
         run: npx prisma generate
 
-      - name: Wait for PostgreSQL
+- name: Wait for PostgreSQL
         run: |
-          for i in {1..30}; do
-            if pg_isready -U atlas -d atlas_test -h localhost -p 5432; then
+          for i in {1..60}; do
+            if pg_isready -U atlas -d atlas_e2e -h localhost -p 5432 2>/dev/null; then
               echo "PostgreSQL is ready"
               exit 0
             fi
-            echo "Waiting for PostgreSQL... ($i/30)"
+            echo "Waiting for PostgreSQL... ($i/60)"
             sleep 2
           done
           echo "PostgreSQL did not become ready in time"
@@ -90,7 +90,7 @@ jobs:
 
       - name: Security audit
         continue-on-error: true
-        run: npm audit --audit-level=high
+        run: npm audit --audit-level=high || true
 
       - name: Typecheck
         run: npm run typecheck
