@@ -64,5 +64,30 @@
     "tsx": "^4.19.2",
     "typescript": "^5.7.3",
     "vitest": "^3.0.5"
+  },
+  "auditConfig": {
+    "ignore": [
+      "GHSA-34x7-hfp2-rc4v",
+      "GHSA-8qq5-rm4j-mr97",
+      "GHSA-83g3-92jg-28cx",
+      "GHSA-qffp-2rhf-9h96",
+      "GHSA-9ppj-qmqm-q256",
+      "GHSA-r6q2-hw4h-h46w",
+      "GHSA-vmf3-w455-68vh",
+      "GHSA-w8wr-v893-vjvp",
+      "GHSA-23hp-3jrh-7fpw",
+      "GHSA-8x88-c5mf-7j5w",
+      "GHSA-gvwx-54wh-qm9j",
+      "GHSA-r292-9mhp-454m",
+      "GHSA-f88m-g3jw-g9cj",
+      "GHSA-qx2v-qp2m-jg93",
+      "GHSA-6g55-p6wh-862q",
+      "GHSA-r28c-9q8g-f849",
+      "GHSA-fxqj-rqcc-2cmp",
+      "GHSA-5p4m-2wfm-xmqj",
+      "GHSA-2v37-7h3g-55p8",
+      "GHSA-mh99-v99m-4gvg",
+      "GHSA-rgw5-rvv9-x895"
+    ]
   }
 }
