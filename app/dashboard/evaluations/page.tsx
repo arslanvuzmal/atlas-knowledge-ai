@@ -1,4 +1,5 @@
 import type { Metadata } from 'next';
+import Link from 'next/link';
 import { AccessDenied } from '@/components/dashboard/access-denied';
 import {
   Badge,
@@ -56,12 +57,12 @@ export default async function EvaluationsPage() {
         description="Define test cases and run them against your knowledge bases to regression-test retrieval and answer quality."
         action={
           canManage ? (
-            <a
+            <Link
               href="/dashboard/evaluations/new"
               className="rounded-md bg-accent px-4 py-2 text-sm font-semibold text-ink-inverse transition hover:bg-accent-soft"
             >
               Create evaluation
-            </a>
+            </Link>
           ) : null
         }
       />
@@ -75,12 +76,12 @@ export default async function EvaluationsPage() {
               description="Create your first evaluation to start regression-testing your RAG pipeline."
               action={
                 canManage ? (
-                  <a
+                  <Link
                     href="/dashboard/evaluations/new"
                     className="rounded-md bg-accent px-4 py-2 text-sm font-semibold text-ink-inverse transition hover:bg-accent-soft"
                   >
                     Create evaluation
-                  </a>
+                  </Link>
                 ) : null
               }
             />

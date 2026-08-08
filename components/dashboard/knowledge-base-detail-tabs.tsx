@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import Link from 'next/link';
 import {
   Badge,
   Cell,
@@ -444,9 +445,9 @@ export function KnowledgeBaseDetailTabs({ base }: KnowledgeBaseDetailTabsProps) 
                 </InlineNote>
                 <p className="text-sm text-ink-muted mt-2">
                   View the{' '}
-                  <a href="/dashboard/analytics" className="text-accent hover:text-accent-soft">
+                  <Link href="/dashboard/analytics" className="text-accent hover:text-accent-soft">
                     Analytics → Content gaps
-                  </a>{' '}
+                  </Link>{' '}
                   panel for clustered low-confidence questions.
                 </p>
               </div>
@@ -460,12 +461,12 @@ export function KnowledgeBaseDetailTabs({ base }: KnowledgeBaseDetailTabsProps) 
               title="Evaluation workbench"
               description="Test representative questions against this knowledge base to regression-test retrieval and answer quality"
               action={
-                <a
+                <Link
                   href="/dashboard/evaluations"
                   className="text-xs text-accent hover:text-accent-soft"
                 >
                   Open full workbench →
-                </a>
+                </Link>
               }
             />
             <InlineNote>
@@ -476,9 +477,9 @@ export function KnowledgeBaseDetailTabs({ base }: KnowledgeBaseDetailTabsProps) 
             <div className="mt-6">
               <p className="text-sm text-ink-muted">
                 The full evaluation workbench is available at{' '}
-                <a href="/dashboard/evaluations" className="text-accent hover:text-accent-soft">
+                <Link href="/dashboard/evaluations" className="text-accent hover:text-accent-soft">
                   /dashboard/evaluations
-                </a>
+                </Link>
                 . Create test suites per knowledge base, track history, and compare runs.
               </p>
             </div>
