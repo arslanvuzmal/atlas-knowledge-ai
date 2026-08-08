@@ -5,7 +5,7 @@ import { getSession } from '@/lib/auth/session';
 import { hasPermission } from '@/lib/auth/rbac';
 import { prisma } from '@/lib/database/client';
 import { formatDateTime } from '@/lib/ui';
-import { apiFetch } from '@/lib/ui';
+import { IntegrationTestButton } from '@/components/dashboard/integration-test-button';
 
 export const metadata: Metadata = { title: 'Integrations' };
 export const dynamic = 'force-dynamic';
@@ -81,40 +81,10 @@ export default async function IntegrationsPage() {
                       {STATUS_LABEL[integration.status]}
                     </Badge>
                     {hasPermission(session.role, 'integration:manage') && (
-                      <a
-                        href="#"
-                        onClick={async (e) => {
-                          e.preventDefault();
-                          try {
-                            const result = await apiFetch<{
-                              integration: {
-                                id: string;
-                                name: string;
-                                type: string;
-                                status: string;
-                                detail: string;
-                                latencyMs: number;
-                                checkedAt: string;
-                              };
-                            }>(`/api/integrations/${integration.id}/test`, {
-                              method: 'POST',
-                            });
-                            if (!result.ok) {
-                              alert(`Test failed: ${result.error}`);
-                            } else {
-                              alert(
-                                `Test ${result.data.integration.status}: ${result.data.integration.detail} (${result.data.integration.latencyMs}ms)`,
-                              );
-                              window.location.reload();
-                            }
-                          } catch {
-                            alert('Test request failed');
-                          }
-                        }}
-                        className="rounded-md border border-edge px-3 py-1.5 text-xs font-medium text-ink transition hover:border-accent hover:text-accent"
-                      >
-                        Test connection
-                      </a>
+                      <IntegrationTestButton
+                        integrationId={integration.id}
+                        _integrationName={integration.name}
+                      />
                     )}
                   </div>
                 </li>
