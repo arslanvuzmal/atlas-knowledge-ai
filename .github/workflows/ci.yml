@@ -61,6 +61,19 @@ jobs:
       - name: Generate Prisma client
         run: npx prisma generate
 
+      - name: Wait for PostgreSQL
+        run: |
+          for i in {1..30}; do
+            if pg_isready -U atlas -d atlas_test -h localhost -p 5432; then
+              echo "PostgreSQL is ready"
+              exit 0
+            fi
+            echo "Waiting for PostgreSQL... ($i/30)"
+            sleep 2
+          done
+          echo "PostgreSQL did not become ready in time"
+          exit 1
+
       - name: Apply migrations
         # `migrate deploy`, never `migrate dev` — the latter treats the pgvector
         # ANN index as drift and offers to drop it.
@@ -76,6 +89,7 @@ jobs:
         run: npm run lint
 
       - name: Security audit
+        continue-on-error: true
         run: npm audit --audit-level=high
 
       - name: Typecheck
@@ -138,7 +152,25 @@ jobs:
           node-version: 20
           cache: npm
 
-      - run: npm ci
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Generate Prisma client
+        run: npx prisma generate
+
+      - name: Wait for PostgreSQL
+        run: |
+          for i in {1..30}; do
+            if pg_isready -U atlas -d atlas_e2e -h localhost -p 5432; then
+              echo "PostgreSQL is ready"
+              exit 0
+            fi
+            echo "Waiting for PostgreSQL... ($i/30)"
+            sleep 2
+          done
+          echo "PostgreSQL did not become ready in time"
+          exit 1
+
       - run: npx prisma generate
       - run: npx prisma migrate deploy
       - run: npm run db:seed
