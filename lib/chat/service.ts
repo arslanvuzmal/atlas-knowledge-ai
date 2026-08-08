@@ -2,11 +2,12 @@ import type { Role } from '@prisma/client';
 import { prisma } from '@/lib/database/client';
 import { generateAnswer, buildSuggestedReply, type AnswerResult } from '@/lib/ai/answer';
 import { getModelSettings, getRetrievalSettings } from '@/lib/retrieval/settings';
-import { retrieve } from '@/lib/retrieval/search';
+import { retrieve, type RetrievalResult } from '@/lib/retrieval/search';
 import type { ConversationTurn } from '@/lib/retrieval/query';
 import { detectPromptInjection } from '@/lib/security/prompt-injection';
 import { recordAudit } from '@/lib/security/audit';
 import { logger, newCorrelationId } from '@/lib/observability/logger';
+import { detectIntent, getConversationalResponse } from './intent';
 
 /**
  * Chat orchestration and persistence.
@@ -141,26 +142,73 @@ export async function ask(input: AskInput): Promise<AskOutput> {
     },
   });
 
-  // --- Retrieval -------------------------------------------------------------
-  const retrieval = await retrieve({
-    question: input.question,
-    role: input.role,
-    knowledgeBaseId: input.knowledgeBaseId ?? null,
-    history,
-    settings,
-    traceId,
+  // --- Intent Routing (fast path for conversational messages) ----------------
+  const intentResult = detectIntent(input.question, history);
+  const isConversational = intentResult.shouldSkipRag;
+
+  log.debug('Intent detected', {
+    intent: intentResult.intent,
+    confidence: intentResult.confidence,
+    isConversational,
+    reasoning: intentResult.reasoning,
   });
 
-  // --- Generation ------------------------------------------------------------
-  const answer = await generateAnswer({
-    question: input.question,
-    role: input.role,
-    retrieval,
-    history,
-    settings,
-    modelSettings,
-    traceId,
-  });
+  let answer: AnswerResult;
+  let retrieval: RetrievalResult | null = null;
+
+  if (isConversational) {
+    // Tier 0: Fast conversational response - no RAG
+    const conversationalText = getConversationalResponse(intentResult.intent);
+    answer = {
+      text: conversationalText,
+      grounding: 'NOT_APPLICABLE' as any,
+      confidence: 1.0,
+      citations: [],
+      provider: 'local',
+      model: 'intent-router',
+      latencyMs: Date.now() - startedAt,
+      isDemo: false,
+      escalationSuggested: false,
+      escalationReason: null,
+      relatedSources: [],
+      evidence: {
+        confidenceLabel: 'Insufficient evidence',
+        supportingPassages: 0,
+        supportingDocuments: 0,
+        coverage: 0,
+        conflictDetected: false,
+        conflictingDocuments: [],
+      },
+      diagnostics: {
+        invalidCitationMarkers: [],
+        usedFallbackCitations: false,
+        promptTokens: 0,
+        truncatedSources: 0,
+        generationFailed: false,
+      },
+    };
+  } else {
+    // --- Retrieval -------------------------------------------------------------
+    retrieval = await retrieve({
+      question: input.question,
+      role: input.role,
+      knowledgeBaseId: input.knowledgeBaseId ?? null,
+      history,
+      settings,
+      traceId,
+    });
+
+    // --- Generation ------------------------------------------------------------
+    answer = await generateAnswer({
+      question: input.question,
+      role: input.role,
+      retrieval,
+      history,
+      settings,
+      modelSettings,
+      traceId,
+    });
+  }
 
   const totalLatency = Date.now() - startedAt;
 
@@ -189,22 +237,25 @@ export async function ask(input: AskInput): Promise<AskOutput> {
     },
   });
 
-  await prisma.retrievalLog.create({
-    data: {
-      conversationId,
-      query: input.question,
-      rewrittenQuery: retrieval.preparation.rewritten,
-      retrievedChunkIds: retrieval.chunks.map((chunk) => chunk.id),
-      rerankedChunkIds: answer.citations.map((citation) => citation.chunkId),
-      candidateCount: retrieval.stats.fusedCandidates,
-      filteredCount: retrieval.stats.afterAccessFilter,
-      confidence: answer.confidence,
-      grounding: answer.grounding,
-      accessLevel: retrieval.allowedLevels[retrieval.allowedLevels.length - 1] ?? 'PUBLIC',
-      latencyMs: totalLatency,
-      traceId,
-    },
-  });
+  // --- Retrieval log (only for RAG queries, not conversational) ------------
+  if (retrieval) {
+    await prisma.retrievalLog.create({
+      data: {
+        conversationId,
+        query: input.question,
+        rewrittenQuery: retrieval.preparation.rewritten,
+        retrievedChunkIds: retrieval.chunks.map((chunk) => chunk.id),
+        rerankedChunkIds: answer.citations.map((citation) => citation.chunkId),
+        candidateCount: retrieval.stats.fusedCandidates,
+        filteredCount: retrieval.stats.afterAccessFilter,
+        confidence: answer.confidence,
+        grounding: answer.grounding,
+        accessLevel: retrieval.allowedLevels[retrieval.allowedLevels.length - 1] ?? 'PUBLIC',
+        latencyMs: totalLatency,
+        traceId,
+      },
+    });
+  }
 
   await prisma.conversation.update({
     where: { id: conversationId },
@@ -261,7 +312,7 @@ export async function ask(input: AskInput): Promise<AskOutput> {
       citationCount: answer.citations.length,
       latencyMs: totalLatency,
       provider: answer.provider,
-      retrieved: retrieval.stats.fusedCandidates,
+      retrieved: retrieval ? retrieval.stats.fusedCandidates : 0,
     },
   });
 
@@ -275,35 +326,37 @@ export async function ask(input: AskInput): Promise<AskOutput> {
 
   // Track knowledge gaps from low-confidence or unsupported answers
   // This is secondary analytics work - must never crash the primary chat request
-  try {
-    await trackKnowledgeGap({
-      question: input.question,
-      role: input.role,
-      knowledgeBaseId: input.knowledgeBaseId ?? null,
-      retrieval: {
-        confidence: retrieval.confidence.confidence,
-        grounding: retrieval.grounding,
-        chunks: retrieval.chunks.map((c) => ({
-          documentId: c.documentId,
-          documentTitle: c.documentTitle,
-          content: c.content,
-        })),
-      },
-      answer: {
-        grounding: answer.grounding,
-        confidence: answer.confidence,
-        citations: answer.citations.map((c) => ({
-          documentId: c.documentId,
-          documentTitle: c.documentTitle,
-          excerpt: c.excerpt,
-        })),
-      },
-      userId: input.userId ?? null,
-    });
-  } catch (error) {
-    log.warn('Knowledge gap tracking failed (non-blocking)', {
-      error: error instanceof Error ? error.message : String(error),
-    });
+  if (retrieval) {
+    try {
+      await trackKnowledgeGap({
+        question: input.question,
+        role: input.role,
+        knowledgeBaseId: input.knowledgeBaseId ?? null,
+        retrieval: {
+          confidence: retrieval.confidence.confidence,
+          grounding: retrieval.grounding,
+          chunks: retrieval.chunks.map((c) => ({
+            documentId: c.documentId,
+            documentTitle: c.documentTitle,
+            content: c.content,
+          })),
+        },
+        answer: {
+          grounding: answer.grounding,
+          confidence: answer.confidence,
+          citations: answer.citations.map((c) => ({
+            documentId: c.documentId,
+            documentTitle: c.documentTitle,
+            excerpt: c.excerpt,
+          })),
+        },
+        userId: input.userId ?? null,
+      });
+    } catch (error) {
+      log.warn('Knowledge gap tracking failed (non-blocking)', {
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
   }
 
   return {
@@ -313,17 +366,29 @@ export async function ask(input: AskInput): Promise<AskOutput> {
     traceId,
     injectionFlagged,
     escalationId,
-    retrieval: {
-      vectorCandidates: retrieval.stats.vectorCandidates,
-      keywordCandidates: retrieval.stats.keywordCandidates,
-      fusedCandidates: retrieval.stats.fusedCandidates,
-      afterAccessFilter: retrieval.stats.afterAccessFilter,
-      rerankedCount: retrieval.stats.rerankedCount,
-      hybrid: retrieval.stats.hybrid,
-      droppedByPostFilter: retrieval.stats.droppedByPostFilter,
-      latencyMs: retrieval.stats.latencyMs,
-      allowedLevels: retrieval.allowedLevels,
-    },
+    retrieval: retrieval
+      ? {
+          vectorCandidates: retrieval.stats.vectorCandidates,
+          keywordCandidates: retrieval.stats.keywordCandidates,
+          fusedCandidates: retrieval.stats.fusedCandidates,
+          afterAccessFilter: retrieval.stats.afterAccessFilter,
+          rerankedCount: retrieval.stats.rerankedCount,
+          hybrid: retrieval.stats.hybrid,
+          droppedByPostFilter: retrieval.stats.droppedByPostFilter,
+          latencyMs: retrieval.stats.latencyMs,
+          allowedLevels: retrieval.allowedLevels,
+        }
+      : {
+          vectorCandidates: 0,
+          keywordCandidates: 0,
+          fusedCandidates: 0,
+          afterAccessFilter: 0,
+          rerankedCount: 0,
+          hybrid: false,
+          droppedByPostFilter: 0,
+          latencyMs: 0,
+          allowedLevels: [],
+        },
   };
 }
 
