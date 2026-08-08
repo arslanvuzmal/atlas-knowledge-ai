@@ -1,9 +1,9 @@
 #!/usr/bin/env node
 /**
  * Custom npm audit runner that allows specific advisories.
- * 
+ *
  * Advisories ignored with documented reasoning:
- * 
+ *
  * HIGH SEVERITY (transitive dependencies of Next.js 15, require Next.js 16 to fix - breaking change):
  * - GHSA-qx2v-qp2m-jg93 (postcss XSS)
  * - GHSA-6g55-p6wh-862q (postcss arbitrary file read)
@@ -14,12 +14,12 @@
  * - GHSA-2v37-7h3g-55p8 (nanoid infinite loop)
  * - GHSA-mh99-v99m-4gvg (brace-expansion DoS)
  * - GHSA-rgw5-rvv9-x895 (brace-expansion DoS)
- * 
+ *
  * CRITICAL SEVERITY (transitive dependency @mapbox/node-pre-gyp, no fix without major refactor):
  * - GHSA-34x7-hfp2-rc4v through GHSA-r292-9mhp-454m (tar vulnerabilities)
  */
 
-const { execSync } = require('child_process');
+import { execSync } from 'child_process';
 
 const ALLOWED_ADVISORIES = new Set([
   // postcss (Next.js transitive)
@@ -54,7 +54,10 @@ const ALLOWED_ADVISORIES = new Set([
 function runAudit() {
   let output;
   try {
-    output = execSync('npm audit --json', { encoding: 'utf-8', stdio: ['ignore', 'pipe', 'ignore'] });
+    output = execSync('npm audit --json', {
+      encoding: 'utf-8',
+      stdio: ['ignore', 'pipe', 'ignore'],
+    });
   } catch (error) {
     // npm audit returns non-zero exit code when vulnerabilities found
     // but still outputs JSON to stdout

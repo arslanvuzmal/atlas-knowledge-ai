@@ -35,7 +35,11 @@ interface Props {
 }
 
 function FieldLabel({ children, htmlFor }: { children: React.ReactNode; htmlFor?: string }) {
-  return <label htmlFor={htmlFor} className="mb-1.5 block text-sm font-medium text-ink">{children}</label>;
+  return (
+    <label htmlFor={htmlFor} className="mb-1.5 block text-sm font-medium text-ink">
+      {children}
+    </label>
+  );
 }
 
 function InputField({
@@ -82,7 +86,11 @@ function InputField({
         aria-invalid={!!error}
         aria-describedby={error ? `${id}-error` : undefined}
       />
-      {error && <p id={`${id}-error`} className="mt-1 text-xs text-status-critical" role="alert">{error}</p>}
+      {error && (
+        <p id={`${id}-error`} className="mt-1 text-xs text-status-critical" role="alert">
+          {error}
+        </p>
+      )}
     </div>
   );
 }
@@ -119,7 +127,11 @@ function TextAreaField({
         aria-invalid={!!error}
         aria-describedby={error ? `${id}-error` : undefined}
       />
-      {error && <p id={`${id}-error`} className="mt-1 text-xs text-status-critical" role="alert">{error}</p>}
+      {error && (
+        <p id={`${id}-error`} className="mt-1 text-xs text-status-critical" role="alert">
+          {error}
+        </p>
+      )}
     </div>
   );
 }
@@ -164,12 +176,24 @@ function SelectField({
           </option>
         ))}
       </select>
-      {error && <p id={`${id}-error`} className="mt-1 text-xs text-status-critical" role="alert">{error}</p>}
+      {error && (
+        <p id={`${id}-error`} className="mt-1 text-xs text-status-critical" role="alert">
+          {error}
+        </p>
+      )}
     </div>
   );
 }
 
-function SubmitButton({ children, disabled, className }: { children: React.ReactNode; disabled?: boolean; className?: string }) {
+function SubmitButton({
+  children,
+  disabled,
+  className,
+}: {
+  children: React.ReactNode;
+  disabled?: boolean;
+  className?: string;
+}) {
   return (
     <button
       type="submit"
@@ -184,7 +208,15 @@ function SubmitButton({ children, disabled, className }: { children: React.React
   );
 }
 
-function SecondaryButton({ children, onClick, className }: { children: React.ReactNode; onClick: () => void; className?: string }) {
+function SecondaryButton({
+  children,
+  onClick,
+  className,
+}: {
+  children: React.ReactNode;
+  onClick: () => void;
+  className?: string;
+}) {
   return (
     <button
       type="button"
@@ -257,8 +289,13 @@ export function EvaluationEditForm({ evaluation, knowledgeBases }: Props) {
 
     testCases.forEach((tc, i) => {
       if (!tc.question.trim()) newErrors[`testCases.${i}.question`] = 'Question is required';
-      if (tc.expectedBehavior === 'SHOULD_ANSWER' && tc.expectedSourceDocuments.length === 0 && tc.expectedConcepts.length === 0) {
-        newErrors[`testCases.${i}.expectedSourceDocuments`] = 'At least one expected source document or concept is required for SHOULD_ANSWER';
+      if (
+        tc.expectedBehavior === 'SHOULD_ANSWER' &&
+        tc.expectedSourceDocuments.length === 0 &&
+        tc.expectedConcepts.length === 0
+      ) {
+        newErrors[`testCases.${i}.expectedSourceDocuments`] =
+          'At least one expected source document or concept is required for SHOULD_ANSWER';
       }
     });
 
@@ -344,7 +381,10 @@ export function EvaluationEditForm({ evaluation, knowledgeBases }: Props) {
       </Panel>
 
       <Panel>
-        <PanelHeader title="Test Cases" description={`${testCases.length} case${testCases.length !== 1 ? 's' : ''}`} />
+        <PanelHeader
+          title="Test Cases"
+          description={`${testCases.length} case${testCases.length !== 1 ? 's' : ''}`}
+        />
         <div className="space-y-4 p-4">
           {testCases.map((tc, i) => (
             <div key={tc.id} className="border border-edge rounded-lg p-4 space-y-4">
@@ -383,14 +423,18 @@ export function EvaluationEditForm({ evaluation, knowledgeBases }: Props) {
                   id={`expectedBehavior-${i}`}
                   label="Expected Behavior"
                   value={tc.expectedBehavior}
-                  onChange={(v) => updateTestCase(i, 'expectedBehavior', v as TestCase['expectedBehavior'])}
+                  onChange={(v) =>
+                    updateTestCase(i, 'expectedBehavior', v as TestCase['expectedBehavior'])
+                  }
                   options={behaviorOptions}
                 />
                 <SelectField
                   id={`permittedRole-${i}`}
                   label="Permitted Role"
                   value={tc.permittedRole}
-                  onChange={(v) => updateTestCase(i, 'permittedRole', v as TestCase['permittedRole'])}
+                  onChange={(v) =>
+                    updateTestCase(i, 'permittedRole', v as TestCase['permittedRole'])
+                  }
                   options={permittedRoleOptions}
                   placeholder="Optional"
                 />
@@ -398,7 +442,9 @@ export function EvaluationEditForm({ evaluation, knowledgeBases }: Props) {
                   id={`expectedGrounding-${i}`}
                   label="Expected Grounding"
                   value={tc.expectedGrounding}
-                  onChange={(v) => updateTestCase(i, 'expectedGrounding', v as TestCase['expectedGrounding'])}
+                  onChange={(v) =>
+                    updateTestCase(i, 'expectedGrounding', v as TestCase['expectedGrounding'])
+                  }
                   options={groundingOptions}
                   placeholder="Optional"
                 />
@@ -427,12 +473,16 @@ export function EvaluationEditForm({ evaluation, knowledgeBases }: Props) {
               </div>
 
               <div className="space-y-2">
-                <FieldLabel htmlFor={`sources-${i}`}>Expected Source Documents (one per line)</FieldLabel>
+                <FieldLabel htmlFor={`sources-${i}`}>
+                  Expected Source Documents (one per line)
+                </FieldLabel>
                 <TextAreaField
                   id={`sources-${i}`}
                   label=""
                   value={tc.expectedSourceDocuments.join('\n')}
-                  onChange={(v) => updateTestCase(i, 'expectedSourceDocuments', v.split('\n').filter(Boolean))}
+                  onChange={(v) =>
+                    updateTestCase(i, 'expectedSourceDocuments', v.split('\n').filter(Boolean))
+                  }
                   placeholder="Refund Policy\nPricing Guide"
                   rows={2}
                   error={errors[`testCases.${i}.expectedSourceDocuments`]}
@@ -440,12 +490,16 @@ export function EvaluationEditForm({ evaluation, knowledgeBases }: Props) {
               </div>
 
               <div className="space-y-2">
-                <FieldLabel htmlFor={`concepts-${i}`}>Expected Concepts/Keywords (one per line)</FieldLabel>
+                <FieldLabel htmlFor={`concepts-${i}`}>
+                  Expected Concepts/Keywords (one per line)
+                </FieldLabel>
                 <TextAreaField
                   id={`concepts-${i}`}
                   label=""
                   value={tc.expectedConcepts.join('\n')}
-                  onChange={(v) => updateTestCase(i, 'expectedConcepts', v.split('\n').filter(Boolean))}
+                  onChange={(v) =>
+                    updateTestCase(i, 'expectedConcepts', v.split('\n').filter(Boolean))
+                  }
                   placeholder="30\nday\nannual"
                   rows={2}
                 />
@@ -521,9 +575,7 @@ export function EvaluationEditForm({ evaluation, knowledgeBases }: Props) {
         >
           Cancel
         </Link>
-        <SubmitButton disabled={submitting}>
-          {submitting ? 'Saving…' : 'Save Changes'}
-        </SubmitButton>
+        <SubmitButton disabled={submitting}>{submitting ? 'Saving…' : 'Save Changes'}</SubmitButton>
       </div>
     </form>
   );

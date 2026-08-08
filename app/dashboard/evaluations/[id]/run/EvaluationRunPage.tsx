@@ -141,7 +141,9 @@ export function EvaluationRunPage({ evaluation }: { evaluation: Evaluation }) {
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
               <div>
                 <span className="text-ink-faint block">Knowledge Base</span>
-                <span className="font-medium text-ink">{evaluation.knowledgeBase?.name ?? '—'}</span>
+                <span className="font-medium text-ink">
+                  {evaluation.knowledgeBase?.name ?? '—'}
+                </span>
               </div>
               <div>
                 <span className="text-ink-faint block">Test Cases</span>
@@ -149,11 +151,15 @@ export function EvaluationRunPage({ evaluation }: { evaluation: Evaluation }) {
               </div>
               <div>
                 <span className="text-ink-faint block">Embedding Provider</span>
-                <span className="font-medium text-ink mono">{process.env.NEXT_PUBLIC_EMBEDDING_PROVIDER ?? 'demo'}</span>
+                <span className="font-medium text-ink mono">
+                  {process.env.NEXT_PUBLIC_EMBEDDING_PROVIDER ?? 'demo'}
+                </span>
               </div>
               <div>
                 <span className="text-ink-faint block">LLM Provider</span>
-                <span className="font-medium text-ink mono">{process.env.NEXT_PUBLIC_LLM_PROVIDER ?? 'demo'}</span>
+                <span className="font-medium text-ink mono">
+                  {process.env.NEXT_PUBLIC_LLM_PROVIDER ?? 'demo'}
+                </span>
               </div>
             </div>
           </div>
@@ -175,8 +181,8 @@ export function EvaluationRunPage({ evaluation }: { evaluation: Evaluation }) {
                       ? run.passed === run.total
                         ? 'good'
                         : run.passed > 0
-                        ? 'warning'
-                        : 'critical'
+                          ? 'warning'
+                          : 'critical'
                       : 'neutral'
                   }
                 >
@@ -222,21 +228,37 @@ export function EvaluationRunPage({ evaluation }: { evaluation: Evaluation }) {
                 </div>
 
                 {results.length === 0 && run.status !== 'COMPLETED' && run.status !== 'FAILED' ? (
-                  <EmptyState title="Running…" description="Test cases are being executed against the pipeline." />
+                  <EmptyState
+                    title="Running…"
+                    description="Test cases are being executed against the pipeline."
+                  />
                 ) : results.length === 0 ? (
-                  <EmptyState title="No results" description="Results will appear here when the run completes." />
+                  <EmptyState
+                    title="No results"
+                    description="Results will appear here when the run completes."
+                  />
                 ) : (
                   <>
                     <DataTable
                       caption="Test case results"
-                      headers={['Test Case', 'Classification', 'Grounding', 'Confidence', 'Citations', 'Latency', 'Details']}
+                      headers={[
+                        'Test Case',
+                        'Classification',
+                        'Grounding',
+                        'Confidence',
+                        'Citations',
+                        'Latency',
+                        'Details',
+                      ]}
                     >
                       {results.map((result) => {
                         const tc = evaluation.testCases.find((t) => t.id === result.testCaseId);
                         return (
                           <tr key={result.testCaseId}>
                             <Cell className="max-w-md">
-                              <span className="font-medium text-ink truncate block">{tc?.question ?? result.testCaseId}</span>
+                              <span className="font-medium text-ink truncate block">
+                                {tc?.question ?? result.testCaseId}
+                              </span>
                               <span className="text-xs text-ink-faint">{tc?.role}</span>
                             </Cell>
                             <Cell>
@@ -245,8 +267,8 @@ export function EvaluationRunPage({ evaluation }: { evaluation: Evaluation }) {
                                   result.classification === 'PASS'
                                     ? 'good'
                                     : result.classification === 'LATENCY_FAILURE'
-                                    ? 'warning'
-                                    : 'critical'
+                                      ? 'warning'
+                                      : 'critical'
                                 }
                               >
                                 {result.classification}
@@ -258,8 +280,8 @@ export function EvaluationRunPage({ evaluation }: { evaluation: Evaluation }) {
                                   result.grounding === 'SUPPORTED'
                                     ? 'good'
                                     : result.grounding === 'PARTIALLY_SUPPORTED'
-                                    ? 'warning'
-                                    : 'critical'
+                                      ? 'warning'
+                                      : 'critical'
                                 }
                               >
                                 {result.grounding}
@@ -277,7 +299,9 @@ export function EvaluationRunPage({ evaluation }: { evaluation: Evaluation }) {
                     </DataTable>
 
                     <details className="border border-edge rounded-lg mt-4">
-                      <summary className="p-4 cursor-pointer font-medium text-ink">Raw Pipeline Metrics</summary>
+                      <summary className="p-4 cursor-pointer font-medium text-ink">
+                        Raw Pipeline Metrics
+                      </summary>
                       <div className="p-4 space-y-2 text-xs font-mono text-ink-faint">
                         {results.map((r) => (
                           <div key={r.testCaseId} className="border-t border-edge pt-2">
@@ -288,7 +312,9 @@ export function EvaluationRunPage({ evaluation }: { evaluation: Evaluation }) {
                             <div>Access filter survivors: {r.accessFilterSurvivors}</div>
                             <div>Reranked chunks: {r.rerankedChunks}</div>
                             <div>Retrieved docs: {r.retrievedDocuments.join(', ') || '—'}</div>
-                            <div>Provider: {r.provider} / {r.model}</div>
+                            <div>
+                              Provider: {r.provider} / {r.model}
+                            </div>
                             <div>Trace ID: {r.traceId}</div>
                           </div>
                         ))}
@@ -304,7 +330,9 @@ export function EvaluationRunPage({ evaluation }: { evaluation: Evaluation }) {
                   <ul className="space-y-1 text-sm">
                     {evaluation.testCases.slice(0, 10).map((tc) => (
                       <li key={tc.id} className="flex gap-2">
-                        <Badge tone="neutral" className="shrink-0">{tc.role}</Badge>
+                        <Badge tone="neutral" className="shrink-0">
+                          {tc.role}
+                        </Badge>
                         <span className="truncate">{tc.question}</span>
                         <Badge tone={tc.expectedBehavior === 'SHOULD_ANSWER' ? 'good' : 'warning'}>
                           {tc.expectedBehavior === 'SHOULD_ANSWER' ? 'Answer' : 'Refuse'}
@@ -312,13 +340,16 @@ export function EvaluationRunPage({ evaluation }: { evaluation: Evaluation }) {
                       </li>
                     ))}
                     {evaluation.testCases.length > 10 && (
-                      <li className="text-ink-faint">… and {evaluation.testCases.length - 10} more</li>
+                      <li className="text-ink-faint">
+                        … and {evaluation.testCases.length - 10} more
+                      </li>
                     )}
                   </ul>
                 </div>
                 <p className="text-sm text-ink-faint">
-                  This will execute all {evaluation.testCases.length} test cases against the current retrieval and generation
-                  pipeline. Results will be stored for comparison with future runs.
+                  This will execute all {evaluation.testCases.length} test cases against the current
+                  retrieval and generation pipeline. Results will be stored for comparison with
+                  future runs.
                 </p>
               </div>
             )}

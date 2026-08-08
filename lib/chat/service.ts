@@ -274,30 +274,37 @@ export async function ask(input: AskInput): Promise<AskOutput> {
   });
 
   // Track knowledge gaps from low-confidence or unsupported answers
-  await trackKnowledgeGap({
-    question: input.question,
-    role: input.role,
-    knowledgeBaseId: input.knowledgeBaseId ?? null,
-    retrieval: {
-      confidence: retrieval.confidence.confidence,
-      grounding: retrieval.grounding,
-      chunks: retrieval.chunks.map((c) => ({
-        documentId: c.documentId,
-        documentTitle: c.documentTitle,
-        content: c.content,
-      })),
-    },
-    answer: {
-      grounding: answer.grounding,
-      confidence: answer.confidence,
-      citations: answer.citations.map((c) => ({
-        documentId: c.documentId,
-        documentTitle: c.documentTitle,
-        excerpt: c.excerpt,
-      })),
-    },
-    userId: input.userId ?? null,
-  });
+  // This is secondary analytics work - must never crash the primary chat request
+  try {
+    await trackKnowledgeGap({
+      question: input.question,
+      role: input.role,
+      knowledgeBaseId: input.knowledgeBaseId ?? null,
+      retrieval: {
+        confidence: retrieval.confidence.confidence,
+        grounding: retrieval.grounding,
+        chunks: retrieval.chunks.map((c) => ({
+          documentId: c.documentId,
+          documentTitle: c.documentTitle,
+          content: c.content,
+        })),
+      },
+      answer: {
+        grounding: answer.grounding,
+        confidence: answer.confidence,
+        citations: answer.citations.map((c) => ({
+          documentId: c.documentId,
+          documentTitle: c.documentTitle,
+          excerpt: c.excerpt,
+        })),
+      },
+      userId: input.userId ?? null,
+    });
+  } catch (error) {
+    log.warn('Knowledge gap tracking failed (non-blocking)', {
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
 
   return {
     conversationId,
@@ -391,12 +398,13 @@ async function trackKnowledgeGap(input: {
         lastOccurredAt: new Date(),
       },
     });
+
+    // Add new suggested sources if they don't already exist (idempotent)
+    const relevantDocs = deduplicateCitationsByDocumentId(answer.citations);
+    await addSuggestedSources(similarGap.id, relevantDocs);
   } else {
-    // Create new knowledge gap
-    const relevantDocs = answer.citations.map((c) => ({
-      documentId: c.documentId,
-      relevanceNote: `Cited in low-confidence answer: ${c.excerpt.slice(0, 200)}`,
-    }));
+    // Create new knowledge gap with deduplicated citations
+    const relevantDocs = deduplicateCitationsByDocumentId(answer.citations);
 
     await prisma.knowledgeGap.create({
       data: {
@@ -413,6 +421,69 @@ async function trackKnowledgeGap(input: {
         },
       },
     });
+  }
+}
+
+/**
+ * Deduplicates citations by documentId, keeping the citation with the highest relevance score.
+ */
+function deduplicateCitationsByDocumentId(
+  citations: { documentId: string; documentTitle: string; excerpt: string }[],
+): Array<{ documentId: string; relevanceNote: string }> {
+  const bestByDoc = new Map<
+    string,
+    { documentId: string; documentTitle: string; excerpt: string }
+  >();
+
+  for (const citation of citations) {
+    const existing = bestByDoc.get(citation.documentId);
+    if (!existing) {
+      bestByDoc.set(citation.documentId, citation);
+    }
+    // Keep the first citation (highest relevance since citations are ordered by relevance)
+  }
+
+  return Array.from(bestByDoc.values()).map((c) => ({
+    documentId: c.documentId,
+    relevanceNote: `Cited in low-confidence answer: ${c.excerpt.slice(0, 200)}`,
+  }));
+}
+
+/**
+ * Adds suggested sources to an existing knowledge gap, skipping duplicates.
+ * Uses upsert to handle concurrent calls idempotently.
+ */
+async function addSuggestedSources(
+  knowledgeGapId: string,
+  docs: Array<{ documentId: string; relevanceNote: string }>,
+): Promise<void> {
+  for (const doc of docs) {
+    try {
+      await prisma.knowledgeGapSuggestion.upsert({
+        where: {
+          knowledgeGapId_documentId: {
+            knowledgeGapId,
+            documentId: doc.documentId,
+          },
+        },
+        create: {
+          knowledgeGapId,
+          documentId: doc.documentId,
+          relevanceNote: doc.relevanceNote,
+        },
+        update: {
+          // Update relevance note with the most recent citation
+          relevanceNote: doc.relevanceNote,
+        },
+      });
+    } catch (error) {
+      // Ignore unique constraint errors from concurrent operations
+      if (error instanceof Error && error.message.includes('P2002')) {
+        // Another request already created this suggestion, that's fine
+        continue;
+      }
+      throw error;
+    }
   }
 }
 

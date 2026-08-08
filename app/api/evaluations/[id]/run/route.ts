@@ -82,7 +82,7 @@ function classifyResult(
       droppedByPostFilter: number;
     };
   },
-  latencyMs: number
+  latencyMs: number,
 ): CaseResult {
   const retrievedDocuments = [...new Set(retrieval.chunks.map((chunk) => chunk.documentTitle))];
 
@@ -340,7 +340,7 @@ function classifyResult(
   // Check expected source documents
   if (testCase.expectedSourceDocuments && testCase.expectedSourceDocuments.length > 0) {
     const foundAll = testCase.expectedSourceDocuments.every((expected) =>
-      retrievedDocuments.some((title) => title.toLowerCase().includes(expected.toLowerCase()))
+      retrievedDocuments.some((title) => title.toLowerCase().includes(expected.toLowerCase())),
     );
     if (!foundAll) {
       return {
@@ -367,9 +367,12 @@ function classifyResult(
 
   // Check expected concepts
   if (testCase.expectedConcepts && testCase.expectedConcepts.length > 0) {
-    const evidence = retrieval.chunks.map((chunk) => chunk.content).join(' ').toLowerCase();
+    const evidence = retrieval.chunks
+      .map((chunk) => chunk.content)
+      .join(' ')
+      .toLowerCase();
     const missingConcepts = testCase.expectedConcepts.filter(
-      (concept) => !evidence.includes(concept.toLowerCase())
+      (concept) => !evidence.includes(concept.toLowerCase()),
     );
     if (missingConcepts.length > 0) {
       return {
@@ -463,10 +466,7 @@ function classifyResult(
   };
 }
 
-export async function POST(
-  request: Request,
-  { params }: { params: Promise<{ id: string }> }
-) {
+export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const guard = await guardRequest(request, {
     permission: 'evaluation:manage',
     rateLimit: 'mutation',
@@ -583,7 +583,15 @@ export async function POST(
   await prisma.evaluationRun.update({
     where: { id: run.id },
     data: {
-      error: JSON.stringify({ results, configurationSnapshot: { settings, modelSettings, embeddingProvider: process.env.EMBEDDING_PROVIDER, llmProvider: process.env.LLM_PROVIDER } }),
+      error: JSON.stringify({
+        results,
+        configurationSnapshot: {
+          settings,
+          modelSettings,
+          embeddingProvider: process.env.EMBEDDING_PROVIDER,
+          llmProvider: process.env.LLM_PROVIDER,
+        },
+      }),
     },
   });
 
@@ -603,10 +611,7 @@ export async function POST(
   });
 }
 
-export async function GET(
-  request: Request,
-  { params }: { params: Promise<{ id: string }> }
-) {
+export async function GET(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const guard = await guardRequest(request, {
     permission: 'evaluation:read',
     rateLimit: 'api',

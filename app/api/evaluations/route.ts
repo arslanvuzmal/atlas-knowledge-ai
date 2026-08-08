@@ -17,10 +17,14 @@ const testCaseSchema = z.object({
   expectedGrounding: z.enum(['SUPPORTED', 'PARTIALLY_SUPPORTED', 'UNSUPPORTED']).optional(),
   minimumConfidence: z.number().min(0).max(1).optional(),
   maximumLatencyMs: z.number().positive().optional(),
-  history: z.array(z.object({
-    role: z.enum(['USER', 'ASSISTANT']),
-    content: z.string(),
-  })).optional(),
+  history: z
+    .array(
+      z.object({
+        role: z.enum(['USER', 'ASSISTANT']),
+        content: z.string(),
+      }),
+    )
+    .optional(),
 });
 
 const createSchema = z.object({
@@ -75,7 +79,11 @@ export async function POST(request: Request) {
     entityType: 'Evaluation',
     entityId: created.id,
     userId: guard.session.user?.id ?? null,
-    newData: { name: created.name, knowledgeBaseId: created.knowledgeBaseId, testCaseCount: Array.isArray(created.testCases) ? created.testCases.length : 0 },
+    newData: {
+      name: created.name,
+      knowledgeBaseId: created.knowledgeBaseId,
+      testCaseCount: Array.isArray(created.testCases) ? created.testCases.length : 0,
+    },
     ip: guard.ip,
   });
 

@@ -1,14 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import {
-  Badge,
-  Cell,
-  DataTable,
-  EmptyState,
-  Panel,
-  PanelHeader,
-} from '@/components/ui/primitives';
+import { Badge, Cell, DataTable, EmptyState, Panel, PanelHeader } from '@/components/ui/primitives';
 import { formatRelative } from '@/lib/ui';
 
 interface Run {
@@ -102,7 +95,10 @@ export function EvaluationRunResults({
     );
   }
 
-  const classificationTones: Record<string, 'good' | 'warning' | 'critical' | 'accent' | 'neutral'> = {
+  const classificationTones: Record<
+    string,
+    'good' | 'warning' | 'critical' | 'accent' | 'neutral'
+  > = {
     PASS: 'good',
     RETRIEVAL_MISS: 'critical',
     WRONG_SOURCE: 'critical',
@@ -149,23 +145,38 @@ export function EvaluationRunResults({
           </div>
           <div>
             <span className="text-ink-faint block">Completed</span>
-            <span className="font-medium text-ink">{run.completedAt ? formatRelative(run.completedAt) : '—'}</span>
+            <span className="font-medium text-ink">
+              {run.completedAt ? formatRelative(run.completedAt) : '—'}
+            </span>
           </div>
         </div>
 
         {results.length === 0 ? (
-          <EmptyState title="No detailed results" description="Results may not be available for older runs." />
+          <EmptyState
+            title="No detailed results"
+            description="Results may not be available for older runs."
+          />
         ) : (
           <DataTable
             caption="Test case results"
-            headers={['Test Case', 'Classification', 'Grounding', 'Confidence', 'Citations', 'Latency', 'Details']}
+            headers={[
+              'Test Case',
+              'Classification',
+              'Grounding',
+              'Confidence',
+              'Citations',
+              'Latency',
+              'Details',
+            ]}
           >
             {results.map((result) => {
               const tc = evaluation.testCases.find((t) => t.id === result.testCaseId);
               return (
                 <tr key={result.testCaseId}>
                   <Cell className="max-w-md">
-                    <span className="font-medium text-ink truncate block">{tc?.question ?? result.testCaseId}</span>
+                    <span className="font-medium text-ink truncate block">
+                      {tc?.question ?? result.testCaseId}
+                    </span>
                     <span className="text-xs text-ink-faint">{tc?.role}</span>
                   </Cell>
                   <Cell>
@@ -174,16 +185,22 @@ export function EvaluationRunResults({
                     </Badge>
                   </Cell>
                   <Cell>
-                    <Badge tone={result.grounding === 'SUPPORTED' ? 'good' : result.grounding === 'PARTIALLY_SUPPORTED' ? 'warning' : 'critical'}>
+                    <Badge
+                      tone={
+                        result.grounding === 'SUPPORTED'
+                          ? 'good'
+                          : result.grounding === 'PARTIALLY_SUPPORTED'
+                            ? 'warning'
+                            : 'critical'
+                      }
+                    >
                       {result.grounding}
                     </Badge>
                   </Cell>
                   <Cell className="mono">{(result.confidence * 100).toFixed(1)}%</Cell>
                   <Cell className="mono">{result.citations}</Cell>
                   <Cell className="mono">{result.latencyMs} ms</Cell>
-<Cell className="text-xs text-ink-faint max-w-xs truncate">
-                      {result.details}
-                    </Cell>
+                  <Cell className="text-xs text-ink-faint max-w-xs truncate">{result.details}</Cell>
                 </tr>
               );
             })}
@@ -192,7 +209,9 @@ export function EvaluationRunResults({
 
         {results.length > 0 && (
           <details className="border border-edge rounded-lg">
-            <summary className="p-4 cursor-pointer font-medium text-ink">Raw Pipeline Metrics</summary>
+            <summary className="p-4 cursor-pointer font-medium text-ink">
+              Raw Pipeline Metrics
+            </summary>
             <div className="p-4 space-y-2 text-xs font-mono text-ink-faint">
               {results.map((r) => (
                 <div key={r.testCaseId} className="border-t border-edge pt-2">
@@ -203,7 +222,9 @@ export function EvaluationRunResults({
                   <div>Access filter survivors: {r.accessFilterSurvivors}</div>
                   <div>Reranked chunks: {r.rerankedChunks}</div>
                   <div>Retrieved docs: {r.retrievedDocuments.join(', ') || '—'}</div>
-                  <div>Provider: {r.provider} / {r.model}</div>
+                  <div>
+                    Provider: {r.provider} / {r.model}
+                  </div>
                   <div>Trace ID: {r.traceId}</div>
                 </div>
               ))}

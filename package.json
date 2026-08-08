@@ -32,7 +32,7 @@
     "db:seed": "tsx scripts/seed.ts",
     "demo:reset": "tsx scripts/demo-reset.ts",
     "demo:documents": "tsx scripts/build-demo-documents.ts",
-    "verify": "npm run format:check && npm run lint && npm run typecheck && npm run test && npm run build",
+    "verify": "npm run format:check && npm run lint && npm run typecheck && npm run test && node scripts/audit.mjs && npm run build",
     "portfolio:capture": "playwright test --config=playwright.screenshots.config.ts"
   },
   "prisma": {

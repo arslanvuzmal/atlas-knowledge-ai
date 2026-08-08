@@ -49,7 +49,7 @@ interface Evaluation {
 }
 
 export function EvaluationDetail({ evaluation }: { evaluation: Evaluation }) {
-  const [selectedRun, setSelectedRun] = useState<typeof evaluation.runs[0] | null>(null);
+  const [selectedRun, setSelectedRun] = useState<(typeof evaluation.runs)[0] | null>(null);
 
   const canManage = true; // Would check permissions in real implementation
 
@@ -85,7 +85,9 @@ export function EvaluationDetail({ evaluation }: { evaluation: Evaluation }) {
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
               <div>
                 <span className="text-ink-faint block">Knowledge Base</span>
-                <span className="font-medium text-ink">{evaluation.knowledgeBase?.name ?? '—'}</span>
+                <span className="font-medium text-ink">
+                  {evaluation.knowledgeBase?.name ?? '—'}
+                </span>
               </div>
               <div>
                 <span className="text-ink-faint block">Test Cases</span>
@@ -105,7 +107,15 @@ export function EvaluationDetail({ evaluation }: { evaluation: Evaluation }) {
               <h4 className="font-medium text-ink mb-3">Test Cases</h4>
               <DataTable
                 caption="Test cases in this evaluation"
-                headers={['Question', 'Role', 'Expected', 'Expected Sources', 'Concepts', 'Min Confidence', 'Max Latency']}
+                headers={[
+                  'Question',
+                  'Role',
+                  'Expected',
+                  'Expected Sources',
+                  'Concepts',
+                  'Min Confidence',
+                  'Max Latency',
+                ]}
               >
                 {evaluation.testCases.map((tc) => (
                   <tr key={tc.id}>
@@ -120,12 +130,8 @@ export function EvaluationDetail({ evaluation }: { evaluation: Evaluation }) {
                         {tc.expectedBehavior === 'SHOULD_ANSWER' ? 'Answer' : 'Refuse'}
                       </Badge>
                     </Cell>
-                    <Cell className="text-xs">
-                      {tc.expectedSourceDocuments?.join(', ') ?? '—'}
-                    </Cell>
-                    <Cell className="text-xs">
-                      {tc.expectedConcepts?.join(', ') ?? '—'}
-                    </Cell>
+                    <Cell className="text-xs">{tc.expectedSourceDocuments?.join(', ') ?? '—'}</Cell>
+                    <Cell className="text-xs">{tc.expectedConcepts?.join(', ') ?? '—'}</Cell>
                     <Cell className="mono text-xs">
                       {tc.minimumConfidence ? `${(tc.minimumConfidence * 100).toFixed(0)}%` : '—'}
                     </Cell>
@@ -169,11 +175,11 @@ export function EvaluationDetail({ evaluation }: { evaluation: Evaluation }) {
                             ? run.passed === run.total
                               ? 'good'
                               : run.passed > 0
-                              ? 'warning'
-                              : 'critical'
+                                ? 'warning'
+                                : 'critical'
                             : run.status === 'RUNNING'
-                            ? 'accent'
-                            : 'neutral'
+                              ? 'accent'
+                              : 'neutral'
                         }
                       >
                         {run.status}
@@ -186,11 +192,15 @@ export function EvaluationDetail({ evaluation }: { evaluation: Evaluation }) {
                             run.passed === run.total
                               ? 'good'
                               : run.passed > 0
-                              ? 'warning'
-                              : 'critical'
+                                ? 'warning'
+                                : 'critical'
                           }
                         >
-                          {run.passed === run.total ? 'Passed' : run.passed > 0 ? 'Partial' : 'Failed'}
+                          {run.passed === run.total
+                            ? 'Passed'
+                            : run.passed > 0
+                              ? 'Partial'
+                              : 'Failed'}
                         </Badge>
                       ) : (
                         <span className="text-ink-faint">{run.status}</span>
@@ -200,7 +210,9 @@ export function EvaluationDetail({ evaluation }: { evaluation: Evaluation }) {
                     <Cell className="mono">{run.failed}</Cell>
                     <Cell className="mono">{run.durationMs ?? 0} ms</Cell>
                     <Cell>
-                      <span className="text-xs text-ink-faint">{formatRelative(run.createdAt)}</span>
+                      <span className="text-xs text-ink-faint">
+                        {formatRelative(run.createdAt)}
+                      </span>
                     </Cell>
                     <Cell align="right">
                       <Link
@@ -216,7 +228,11 @@ export function EvaluationDetail({ evaluation }: { evaluation: Evaluation }) {
 
               {selectedRun && (
                 <div className="border-t border-edge pt-4 mt-4">
-                  <EvaluationRunResults run={selectedRun} evaluation={evaluation} onClose={() => setSelectedRun(null)} />
+                  <EvaluationRunResults
+                    run={selectedRun}
+                    evaluation={evaluation}
+                    onClose={() => setSelectedRun(null)}
+                  />
                 </div>
               )}
             </>

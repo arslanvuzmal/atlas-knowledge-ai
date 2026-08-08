@@ -10,28 +10,34 @@ const updateSchema = z.object({
   _action: z.literal('update'),
   name: z.string().min(2).max(120),
   description: z.string().max(500).optional(),
-  testCases: z.array(z.object({
-    id: z.string().min(1),
-    question: z.string().min(1).max(2000),
-    role: z.enum(['PUBLIC', 'CUSTOMER', 'EMPLOYEE', 'MANAGER', 'ADMIN']),
-    expectedBehavior: z.enum(['SHOULD_ANSWER', 'SHOULD_REFUSE']),
-    expectedSourceDocuments: z.array(z.string()).optional(),
-    expectedConcepts: z.array(z.string()).optional(),
-    permittedRole: z.enum(['PUBLIC', 'CUSTOMER', 'EMPLOYEE', 'MANAGER', 'ADMIN']).optional(),
-    expectedGrounding: z.enum(['SUPPORTED', 'PARTIALLY_SUPPORTED', 'UNSUPPORTED']).optional(),
-    minimumConfidence: z.number().min(0).max(1).optional(),
-    maximumLatencyMs: z.number().positive().optional(),
-    history: z.array(z.object({
-      role: z.enum(['USER', 'ASSISTANT']),
-      content: z.string(),
-    })).optional(),
-  })).min(1).max(200),
+  testCases: z
+    .array(
+      z.object({
+        id: z.string().min(1),
+        question: z.string().min(1).max(2000),
+        role: z.enum(['PUBLIC', 'CUSTOMER', 'EMPLOYEE', 'MANAGER', 'ADMIN']),
+        expectedBehavior: z.enum(['SHOULD_ANSWER', 'SHOULD_REFUSE']),
+        expectedSourceDocuments: z.array(z.string()).optional(),
+        expectedConcepts: z.array(z.string()).optional(),
+        permittedRole: z.enum(['PUBLIC', 'CUSTOMER', 'EMPLOYEE', 'MANAGER', 'ADMIN']).optional(),
+        expectedGrounding: z.enum(['SUPPORTED', 'PARTIALLY_SUPPORTED', 'UNSUPPORTED']).optional(),
+        minimumConfidence: z.number().min(0).max(1).optional(),
+        maximumLatencyMs: z.number().positive().optional(),
+        history: z
+          .array(
+            z.object({
+              role: z.enum(['USER', 'ASSISTANT']),
+              content: z.string(),
+            }),
+          )
+          .optional(),
+      }),
+    )
+    .min(1)
+    .max(200),
 });
 
-export async function GET(
-  request: Request,
-  { params }: { params: Promise<{ id: string }> }
-) {
+export async function GET(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const guard = await guardRequest(request, {
     permission: 'evaluation:read',
     rateLimit: 'api',
@@ -61,10 +67,7 @@ export async function GET(
   return NextResponse.json({ ok: true, evaluation });
 }
 
-export async function PATCH(
-  request: Request,
-  { params }: { params: Promise<{ id: string }> }
-) {
+export async function PATCH(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const guard = await guardRequest(request, {
     permission: 'evaluation:manage',
     rateLimit: 'mutation',
@@ -119,18 +122,23 @@ export async function PATCH(
     entityType: 'Evaluation',
     entityId: updated.id,
     userId: guard.session.user?.id ?? null,
-    previousData: { name: existing.name, description: existing.description, testCaseCount: Array.isArray(existing.testCases) ? existing.testCases.length : 0 },
-    newData: { name: updated.name, description: updated.description, testCaseCount: Array.isArray(updated.testCases) ? updated.testCases.length : 0 },
+    previousData: {
+      name: existing.name,
+      description: existing.description,
+      testCaseCount: Array.isArray(existing.testCases) ? existing.testCases.length : 0,
+    },
+    newData: {
+      name: updated.name,
+      description: updated.description,
+      testCaseCount: Array.isArray(updated.testCases) ? updated.testCases.length : 0,
+    },
     ip: guard.ip,
   });
 
   return NextResponse.json({ ok: true, evaluation: updated });
 }
 
-export async function DELETE(
-  request: Request,
-  { params }: { params: Promise<{ id: string }> }
-) {
+export async function DELETE(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const guard = await guardRequest(request, {
     permission: 'evaluation:manage',
     rateLimit: 'mutation',
