@@ -68,3 +68,5 @@ next-env.d.ts
 tests/e2e/.auth/
 
 .vercel
+
+.vercel
