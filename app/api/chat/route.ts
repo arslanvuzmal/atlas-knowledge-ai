@@ -72,6 +72,7 @@ export async function POST(request: Request) {
     knowledgeBaseId = primary?.id ?? null;
   }
 
+  const startedAt = Date.now();
   try {
     const result = await ask({
       question: validation.question,
@@ -121,17 +122,20 @@ export async function POST(request: Request) {
         confidence: {
           value: result.answer.confidence,
           label: result.answer.evidence.confidenceLabel,
-          topScore:
-            result.answer.evidence.coverage > 0
-              ? result.retrieval.rerankedCount > 0
-                ? 0.8
-                : 0.5
-              : 0,
+          topScore: Number(result.answer.confidence.toFixed(4)),
           coverage: result.answer.evidence.coverage,
-          agreement: result.answer.evidence.confidenceLabel === 'Strong evidence' ? 0.8 : 0.4,
-          margin: 0.2,
+          agreement:
+            result.answer.evidence.supportingPassages > 0
+              ? Number(
+                  (
+                    result.answer.evidence.supportingPassages /
+                    Math.max(1, result.answer.citations.length)
+                  ).toFixed(2),
+                )
+              : 0,
+          margin: Number((result.answer.confidence * 0.2).toFixed(2)),
           supportingChunks: result.answer.evidence.supportingPassages,
-          uncoveredTerms: result.answer.grounding === 'UNSUPPORTED' ? ['topic not in corpus'] : [],
+          uncoveredTerms: [],
         },
         grounding: result.answer.grounding,
         answer: {
@@ -149,14 +153,65 @@ export async function POST(request: Request) {
       },
     });
   } catch (error) {
-    logger.error('Chat request failed', { correlationId: guard.correlationId, error });
-    // No stack trace, no provider detail, no query echo.
+    const durationMs = Date.now() - startedAt;
+    let stage = 'CHAT_GENERATION_FAILED';
+    let code = 'CHAT_GENERATION_FAILED';
+    let publicMessage = 'The assistant could not complete that request. Please try again.';
+    let statusCode = 500;
+
+    if (error && typeof error === 'object' && 'kind' in error) {
+      const errKind = (error as { kind?: string }).kind;
+      stage = 'CHAT_PROVIDER_FAILED';
+      if (errKind === 'auth') {
+        code = 'CHAT_PROVIDER_AUTH_FAILED';
+        publicMessage = 'The AI provider credential is invalid or missing.';
+        statusCode = 503;
+      } else if (errKind === 'rate_limit') {
+        code = 'CHAT_PROVIDER_RATE_LIMITED';
+        publicMessage = 'The AI service rate limit was exceeded. Please try again shortly.';
+        statusCode = 429;
+      } else if (errKind === 'timeout') {
+        code = 'CHAT_PROVIDER_TIMEOUT';
+        publicMessage = 'The AI service timed out while generating a response.';
+        statusCode = 504;
+      } else if (errKind === 'content_filter') {
+        code = 'CHAT_CONTENT_FILTERED';
+        publicMessage = 'The AI service declined to answer this request due to content policy.';
+        statusCode = 400;
+      } else {
+        code = 'CHAT_PROVIDER_UNAVAILABLE';
+        publicMessage = 'The AI service is temporarily unavailable.';
+        statusCode = 503;
+      }
+    } else if (
+      error &&
+      typeof error === 'object' &&
+      'name' in error &&
+      String((error as { name: string }).name).includes('Prisma')
+    ) {
+      stage = 'CHAT_DATABASE_FAILED';
+      code = 'CHAT_DATABASE_FAILED';
+      publicMessage = 'A database error occurred while completing your request.';
+      statusCode = 500;
+    }
+
+    logger.error('Chat request failed', {
+      correlationId: guard.correlationId,
+      stage,
+      code,
+      statusCode,
+      durationMs,
+      errorClass: error instanceof Error ? error.constructor.name : typeof error,
+      errorMessage: error instanceof Error ? error.message : String(error),
+    });
+
     return NextResponse.json(
       {
-        error: 'The assistant could not complete that request. Please try again.',
+        error: publicMessage,
+        code,
         correlationId: guard.correlationId,
       },
-      { status: 500 },
+      { status: statusCode },
     );
   }
 }

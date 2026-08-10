@@ -8,6 +8,8 @@ import { detectPromptInjection } from '@/lib/security/prompt-injection';
 import { recordAudit } from '@/lib/security/audit';
 import { logger, newCorrelationId } from '@/lib/observability/logger';
 import { detectIntent, getConversationalResponse } from './intent';
+import { resolveIdentity } from '@/lib/crm/contact';
+import { enqueueOutboxEvent, processOutboxEvents } from '@/lib/outbox/worker';
 
 /**
  * Chat orchestration and persistence.
@@ -323,6 +325,65 @@ export async function ask(input: AskInput): Promise<AskOutput> {
     latencyMs: totalLatency,
     citations: answer.citations.length,
   });
+
+  // --- Contact & Outbox Integration (non-blocking secondary workflow) ------
+  try {
+    let workspaceId: string | null = null;
+    if (input.knowledgeBaseId) {
+      const kb = await prisma.knowledgeBase.findUnique({
+        where: { id: input.knowledgeBaseId },
+        select: { workspaceId: true },
+      });
+      workspaceId = kb?.workspaceId ?? null;
+    }
+    if (!workspaceId) {
+      const ws = await prisma.workspace.findFirst({ select: { id: true } });
+      workspaceId = ws?.id ?? null;
+    }
+
+    if (workspaceId) {
+      const emailMatch = input.question.match(/([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})/);
+      const extractedEmail = emailMatch ? emailMatch[1] : undefined;
+
+      const nameMatch = input.question.match(
+        /(?:my name is|i am|i'm)\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)/i,
+      );
+      const extractedName = nameMatch ? nameMatch[1] : undefined;
+
+      const contact = await resolveIdentity({
+        workspaceId,
+        visitorKey: input.anonymousKey ?? undefined,
+        email: extractedEmail,
+        name: extractedName,
+      });
+
+      await prisma.conversation.update({
+        where: { id: conversationId },
+        data: { contactId: contact.id, workspaceId, updatedAt: new Date() },
+      });
+
+      await enqueueOutboxEvent({
+        workspaceId,
+        eventType: 'CHAT_TURN_COMPLETED',
+        payload: {
+          contactId: contact.id,
+          conversationId,
+          messageId: assistantMessage.id,
+          messages: [
+            ...history,
+            { role: 'user', content: input.question },
+            { role: 'assistant', content: answer.text },
+          ],
+        },
+      });
+
+      void processOutboxEvents(5).catch(() => {});
+    }
+  } catch (crmError) {
+    log.warn('CRM / Outbox post-processing failed (non-blocking)', {
+      error: crmError instanceof Error ? crmError.message : String(crmError),
+    });
+  }
 
   // Track knowledge gaps from low-confidence or unsupported answers
   // This is secondary analytics work - must never crash the primary chat request

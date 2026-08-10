@@ -24,24 +24,58 @@ export async function enqueueOutboxEvent(input: EnqueueOutboxInput) {
  * Uses atomic transaction processing for zero-race-condition durability.
  */
 export async function processOutboxEvents(limit = 10): Promise<number> {
-  const pendingEvents = await prisma.outboxEvent.findMany({
-    where: {
-      status: 'PENDING',
-      nextAttemptAt: { lte: new Date() },
-    },
-    take: limit,
-    orderBy: { createdAt: 'asc' },
-  });
+  let eventsToProcess: Array<{
+    id: string;
+    workspaceId: string;
+    eventType: string;
+    payload: unknown;
+    attempts: number;
+    maxAttempts: number;
+  }> = [];
+
+  try {
+    eventsToProcess = await prisma.$queryRaw`
+      UPDATE "OutboxEvent"
+      SET "status" = 'PROCESSING', "attempts" = "attempts" + 1
+      WHERE "id" IN (
+        SELECT "id"
+        FROM "OutboxEvent"
+        WHERE "status" = 'PENDING' AND "nextAttemptAt" <= NOW()
+        ORDER BY "createdAt" ASC
+        LIMIT ${limit}
+        FOR UPDATE SKIP LOCKED
+      )
+      RETURNING "id", "workspaceId", "eventType", "payload", "attempts", "maxAttempts";
+    `;
+  } catch {
+    // Fallback if raw UPDATE SKIP LOCKED is not supported
+    const pendingEvents = await prisma.outboxEvent.findMany({
+      where: {
+        status: 'PENDING',
+        nextAttemptAt: { lte: new Date() },
+      },
+      take: limit,
+      orderBy: { createdAt: 'asc' },
+    });
+
+    eventsToProcess = [];
+    for (const event of pendingEvents) {
+      try {
+        const updated = await prisma.outboxEvent.update({
+          where: { id: event.id, status: 'PENDING' },
+          data: { status: 'PROCESSING', attempts: event.attempts + 1 },
+        });
+        eventsToProcess.push(updated);
+      } catch {
+        // Another worker claimed it
+      }
+    }
+  }
 
   let processed = 0;
 
-  for (const event of pendingEvents) {
+  for (const event of eventsToProcess) {
     try {
-      await prisma.outboxEvent.update({
-        where: { id: event.id },
-        data: { status: 'PROCESSING', attempts: event.attempts + 1 },
-      });
-
       const payload = event.payload as Record<string, unknown>;
 
       switch (event.eventType) {

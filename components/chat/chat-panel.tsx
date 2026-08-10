@@ -172,7 +172,13 @@ export function ChatPanel({
           <Badge tone="accent">{roleLabel}</Badge>
           <span className="font-mono text-xs text-ink-faint">{reachLabel}</span>
         </div>
-        {demoMode ? <Badge tone="iris">DEMO_PROVIDERS</Badge> : null}
+        <Badge tone="iris">
+          {latestAssistantTurn?.provider
+            ? `${latestAssistantTurn.provider.toUpperCase()} (${latestAssistantTurn.model ?? ''})`
+            : demoMode
+              ? 'DEMO DATASET'
+              : 'LIVE PIPELINE'}
+        </Badge>
       </div>
 
       {/* 62 / 38 Desktop Split Workspace */}

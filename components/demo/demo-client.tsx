@@ -1,6 +1,7 @@
 'use client';
 
 import Link from 'next/link';
+import { apiFetch } from '@/lib/ui';
 import { useState } from 'react';
 import { ChatPanel } from '@/components/chat/chat-panel';
 import { DemoBadge, Wordmark } from '@/components/ui/wordmark';
@@ -54,6 +55,19 @@ const ROLE_CARDS: RoleCard[] = [
 export function DemoClient({ demoMode }: { demoMode: boolean }) {
   const [pipelineMeta, setPipelineMeta] = useState<PipelineMetadata | null>(null);
   const [activeRole, setActiveRole] = useState<RoleCard>(ROLE_CARDS[0]);
+  const [chatKey, setChatKey] = useState('chat-PUBLIC');
+
+  async function handleRoleChange(r: RoleCard) {
+    setActiveRole(r);
+    if (demoMode) {
+      await apiFetch('/api/demo/session-role', {
+        method: 'POST',
+        body: JSON.stringify({ role: r.role }),
+      });
+      setChatKey(`chat-${r.role}-${Date.now()}`);
+      setPipelineMeta(null);
+    }
+  }
 
   return (
     <div className="flex h-screen flex-col bg-canvas text-ink font-sans">
@@ -86,7 +100,7 @@ export function DemoClient({ demoMode }: { demoMode: boolean }) {
                 <button
                   key={r.role}
                   type="button"
-                  onClick={() => setActiveRole(r)}
+                  onClick={() => void handleRoleChange(r)}
                   className={`px-2.5 py-1 rounded font-mono text-xs font-semibold transition ${
                     activeRole.role === r.role
                       ? 'bg-accent text-ink-inverse shadow-sm'
@@ -199,6 +213,7 @@ export function DemoClient({ demoMode }: { demoMode: boolean }) {
             {/* Chat Panel (9 cols) */}
             <div className="lg:col-span-9 min-w-0 h-full">
               <ChatPanel
+                key={chatKey}
                 mode="public"
                 suggestions={SCENARIO_QUESTIONS.flatMap((s) => s.questions)}
                 roleLabel={activeRole.label}

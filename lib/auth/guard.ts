@@ -1,4 +1,4 @@
-import { headers } from 'next/headers';
+import { headers, cookies } from 'next/headers';
 import { NextResponse } from 'next/server';
 import type { Role } from '@prisma/client';
 import { getSession, CSRF_COOKIE, type SessionContext } from '@/lib/auth/session';
@@ -6,6 +6,7 @@ import { hasPermission, type Permission } from '@/lib/auth/rbac';
 import { checkRateLimit, type RateLimitName } from '@/lib/security/rate-limit';
 import { recordAudit } from '@/lib/security/audit';
 import { newCorrelationId } from '@/lib/observability/logger';
+import { isDemoMode } from '@/lib/env';
 
 /**
  * Route-handler guards.
@@ -145,25 +146,38 @@ export async function guardRequest(
     };
   }
 
+  let effectiveRole = session.role;
+  if (!session.isAuthenticated && isDemoMode()) {
+    try {
+      const cookieStore = await cookies();
+      const demoRoleCookie = cookieStore.get('atlas_demo_role')?.value;
+      if (
+        demoRoleCookie &&
+        ['PUBLIC', 'CUSTOMER', 'EMPLOYEE', 'MANAGER', 'ADMIN'].includes(demoRoleCookie)
+      ) {
+        effectiveRole = demoRoleCookie as Role;
+      }
+    } catch {
+      // Fallback to default session.role if cookies() cannot be accessed
+    }
+  }
+
   // --- Permission ----------------------------------------------------------
-  if (options.permission && !hasPermission(session.role, options.permission)) {
+  if (options.permission && !hasPermission(effectiveRole, options.permission)) {
     await recordAudit({
       action: 'security.unauthorised',
       entityType: 'Request',
       userId: session.user?.id ?? null,
-      metadata: { permission: options.permission, role: session.role, correlationId },
+      metadata: { permission: options.permission, role: effectiveRole, correlationId },
       ip,
     });
-    // 403, not 404: the caller is authenticated and the route exists. Resource
-    // existence is hidden at the query layer instead, by scoping every read to
-    // the caller's access levels.
     return {
       ok: false,
       response: errorResponse(403, 'You do not have permission to do that.', correlationId),
     };
   }
 
-  return { ok: true, session, role: session.role, ip, correlationId };
+  return { ok: true, session, role: effectiveRole, ip, correlationId };
 }
 
 /** Page-level guard for server components. Returns null when not permitted. */
