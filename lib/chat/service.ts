@@ -161,7 +161,7 @@ export async function ask(input: AskInput): Promise<AskOutput> {
     const conversationalText = getConversationalResponse(intentResult.intent);
     answer = {
       text: conversationalText,
-      grounding: 'NOT_APPLICABLE' as any,
+      grounding: 'SUPPORTED',
       confidence: 1.0,
       citations: [],
       provider: 'local',

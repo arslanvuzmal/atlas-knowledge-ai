@@ -1,4 +1,4 @@
-import type { RerankedChunk } from '../retrieval/types';
+import type { RerankedChunk } from '@/lib/reranking';
 
 export interface ConflictDocument {
   documentId: string;

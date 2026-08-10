@@ -39,17 +39,30 @@ export interface QueuedJob {
   result?: IngestResult | null;
 }
 
-function serializePayload(payload: IngestionJobPayload): any {
+export interface JobRecordData {
+  payload: Record<string, unknown>;
+  status: 'PENDING' | 'PROCESSING' | 'COMPLETED' | 'FAILED';
+  attempts: number;
+  maxAttempts: number;
+  createdAt: string;
+  updatedAt: string;
+  startedAt?: string | null;
+  completedAt?: string | null;
+  lastError?: string | null;
+  result?: IngestResult | null;
+}
+
+function serializePayload(payload: IngestionJobPayload): Record<string, unknown> {
   return {
     ...payload,
     bytes: payload.bytes.toString('base64'),
   };
 }
 
-function deserializePayload(data: any): IngestionJobPayload {
+function deserializePayload(data: Record<string, unknown>): IngestionJobPayload {
   return {
-    ...data,
-    bytes: Buffer.from(data.bytes, 'base64'),
+    ...(data as unknown as IngestionJobPayload),
+    bytes: Buffer.from(data.bytes as string, 'base64'),
   };
 }
 
@@ -74,14 +87,16 @@ export async function enqueueIngestionJob(
   await prisma.systemSetting.create({
     data: {
       key: jobKey(id),
-      value: {
-        payload: serializePayload(payload),
-        maxAttempts: options.maxAttempts ?? 3,
-        status: 'PENDING',
-        attempts: 0,
-        createdAt,
-        updatedAt: createdAt,
-      },
+      value: JSON.parse(
+        JSON.stringify({
+          payload: serializePayload(payload),
+          maxAttempts: options.maxAttempts ?? 3,
+          status: 'PENDING',
+          attempts: 0,
+          createdAt,
+          updatedAt: createdAt,
+        }),
+      ),
     },
   });
 
@@ -115,23 +130,25 @@ export async function dequeueIngestionJob(): Promise<QueuedJob | null> {
   if (settings.length === 0) return null;
 
   const setting = settings[0];
-  const jobData = setting.value as any;
+  const jobData = setting.value as unknown as JobRecordData;
 
   // Try to claim the job atomically
   const updated = await prisma.systemSetting.update({
     where: { key: setting.key },
     data: {
-      value: {
-        ...jobData,
-        status: 'PROCESSING',
-        attempts: jobData.attempts + 1,
-        startedAt: nowISO(),
-        updatedAt: nowISO(),
-      },
+      value: JSON.parse(
+        JSON.stringify({
+          ...jobData,
+          status: 'PROCESSING',
+          attempts: jobData.attempts + 1,
+          startedAt: nowISO(),
+          updatedAt: nowISO(),
+        }),
+      ),
     },
   });
 
-  const claimed = updated.value as any;
+  const claimed = updated.value as unknown as JobRecordData;
   const jobId = setting.key.replace('ingestion:job:', '');
 
   return {
@@ -173,19 +190,21 @@ export async function failIngestionJob(jobId: string, error: string): Promise<vo
 
   if (!setting) return;
 
-  const jobData = setting.value as any;
+  const jobData = setting.value as unknown as JobRecordData;
   const willRetry = jobData.attempts < jobData.maxAttempts;
 
   await prisma.systemSetting.update({
     where: { key: setting.key },
     data: {
-      value: {
-        ...jobData,
-        status: willRetry ? 'PENDING' : 'FAILED',
-        lastError: error,
-        updatedAt: nowISO(),
-        completedAt: willRetry ? null : nowISO(),
-      },
+      value: JSON.parse(
+        JSON.stringify({
+          ...jobData,
+          status: willRetry ? 'PENDING' : 'FAILED',
+          lastError: error,
+          updatedAt: nowISO(),
+          completedAt: willRetry ? null : nowISO(),
+        }),
+      ),
     },
   });
 
@@ -281,7 +300,7 @@ export async function getJobStatus(jobId: string): Promise<QueuedJob | null> {
 
   if (!setting) return null;
 
-  const jobData = setting.value as any;
+  const jobData = setting.value as unknown as JobRecordData;
   return {
     id: jobId,
     payload: deserializePayload(jobData.payload),

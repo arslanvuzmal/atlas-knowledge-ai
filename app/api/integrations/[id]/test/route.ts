@@ -103,10 +103,13 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
   }
 
   // Update integration status in database
+  const statusEnum: 'CONNECTED' | 'DISCONNECTED' | 'ERROR' | 'NOT_CONFIGURED' =
+    testResult?.status === 'operational' ? 'CONNECTED' : 'ERROR';
+
   await prisma.integration.update({
     where: { id },
     data: {
-      status: testResult?.status.toUpperCase() as any,
+      status: statusEnum,
       lastCheckedAt: new Date(),
     },
   });

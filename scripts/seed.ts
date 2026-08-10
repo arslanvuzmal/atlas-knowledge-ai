@@ -15,16 +15,6 @@ import {
 } from '@/lib/retrieval/settings';
 import { ensureRetrievalIndexes } from './ensure-indexes';
 
-/**
- * Demo seed.
- *
- * Everything here is fictional. The seed deliberately runs documents through
- * the *real* ingestion pipeline and questions through the *real* chat pipeline
- * rather than inserting pre-baked rows. That means the analytics, retrieval
- * logs, citations, and escalations on the dashboard are genuine outputs of the
- * system, not fixtures shaped to look good in a screenshot.
- */
-
 const DEMO_PASSWORD = 'AtlasDemo!2026';
 
 interface DemoUserSpec {
@@ -55,11 +45,6 @@ const DOCUMENT_ACCESS: Record<string, { accessLevel: AccessLevel; title: string 
   },
 };
 
-/**
- * Refuses to run against anything that does not look like a local or explicitly
- * sanctioned database. Reseeding a production database would destroy customer
- * data, so this guard fails closed.
- */
 function assertSafeToSeed(): void {
   const config = env();
   if (config.ALLOW_PRODUCTION_SEED) {
@@ -101,301 +86,540 @@ async function seedUsers(): Promise<Map<string, { id: string; role: Role }>> {
         status: 'ACTIVE',
         isDemo: true,
       },
-      update: { name: spec.name, role: spec.role, passwordHash, isDemo: true, status: 'ACTIVE' },
-      select: { id: true, role: true },
+      update: {
+        name: spec.name,
+        passwordHash,
+        role: spec.role,
+        status: 'ACTIVE',
+        isDemo: true,
+      },
     });
-    users.set(spec.email, user);
+    users.set(spec.email, { id: user.id, role: user.role });
   }
 
   console.log(`  users: ${users.size} demo accounts ready`);
   return users;
 }
 
-async function seedSettings(adminId: string): Promise<void> {
+async function seedSettings(adminUserId: string): Promise<void> {
+  const rSettings = defaultRetrievalSettings();
+  const mSettings = defaultModelSettings();
+
   await prisma.systemSetting.upsert({
     where: { key: RETRIEVAL_SETTINGS_KEY },
-    create: { key: RETRIEVAL_SETTINGS_KEY, value: defaultRetrievalSettings(), updatedBy: adminId },
-    update: {},
+    create: {
+      key: RETRIEVAL_SETTINGS_KEY,
+      value: JSON.parse(JSON.stringify(rSettings)),
+      updatedBy: adminUserId,
+    },
+    update: {
+      value: JSON.parse(JSON.stringify(rSettings)),
+      updatedBy: adminUserId,
+    },
   });
+
   await prisma.systemSetting.upsert({
     where: { key: MODEL_SETTINGS_KEY },
-    create: { key: MODEL_SETTINGS_KEY, value: defaultModelSettings(), updatedBy: adminId },
-    update: {},
+    create: {
+      key: MODEL_SETTINGS_KEY,
+      value: JSON.parse(JSON.stringify(mSettings)),
+      updatedBy: adminUserId,
+    },
+    update: {
+      value: JSON.parse(JSON.stringify(mSettings)),
+      updatedBy: adminUserId,
+    },
   });
 
   const integrations = [
-    {
-      type: 'embedding',
-      name: 'Deterministic demo embeddings',
-      status: 'CONNECTED' as const,
-      configurationMetadata: { provider: 'demo', dimensions: env().EMBEDDING_DIMENSIONS },
-    },
-    {
-      type: 'llm',
-      name: 'Deterministic demo generator',
-      status: 'CONNECTED' as const,
-      configurationMetadata: { provider: 'demo' },
-    },
-    {
-      type: 'storage',
-      name: 'Local filesystem storage',
-      status: 'CONNECTED' as const,
-      configurationMetadata: { provider: 'local' },
-    },
-    {
-      type: 'llm',
-      name: 'OpenAI',
-      status: 'NOT_CONFIGURED' as const,
-      configurationMetadata: { requires: 'OPENAI_API_KEY' },
-    },
-    {
-      type: 'llm',
-      name: 'Anthropic',
-      status: 'NOT_CONFIGURED' as const,
-      configurationMetadata: { requires: 'ANTHROPIC_API_KEY' },
-    },
-    {
-      type: 'storage',
-      name: 'Supabase Storage',
-      status: 'NOT_CONFIGURED' as const,
-      configurationMetadata: { requires: 'SUPABASE_SERVICE_ROLE_KEY' },
-    },
+    { type: 'storage', name: 'Local Disk Storage', status: 'CONNECTED' as const },
+    { type: 'embedding', name: 'Demo Embeddings (768d)', status: 'CONNECTED' as const },
+    { type: 'llm', name: 'Demo Generator', status: 'CONNECTED' as const },
+    { type: 'crm', name: 'Atlas Intelligence CRM Engine', status: 'CONNECTED' as const },
+    { type: 'vector_db', name: 'PostgreSQL pgvector (HNSW)', status: 'CONNECTED' as const },
+    { type: 'evaluation', name: 'Retrieval Quality Workbench', status: 'CONNECTED' as const },
   ];
 
-  for (const integration of integrations) {
+  for (const item of integrations) {
     await prisma.integration.upsert({
-      where: { type_name: { type: integration.type, name: integration.name } },
-      create: integration,
+      where: { type_name: { type: item.type, name: item.name } },
+      create: {
+        type: item.type,
+        name: item.name,
+        status: item.status,
+        lastCheckedAt: new Date(),
+      },
       update: {
-        status: integration.status,
-        configurationMetadata: integration.configurationMetadata,
+        status: item.status,
+        lastCheckedAt: new Date(),
       },
     });
   }
 
-  console.log(`  settings: retrieval, model, and ${integrations.length} integration records ready`);
+  console.log('  settings: retrieval, model, CRM engine, and integration records ready');
 }
 
-async function seedDocuments(knowledgeBaseId: string, adminId: string): Promise<void> {
-  const corpusDir = path.resolve(process.cwd(), 'sample-data', 'northstar');
-  const files = (await readdir(corpusDir)).filter((file) => file.endsWith('.md')).sort();
+async function seedWorkspace(users: Map<string, { id: string; role: Role }>) {
+  const workspace = await prisma.workspace.upsert({
+    where: { slug: 'northstar-cloud' },
+    create: {
+      name: 'Northstar Cloud',
+      slug: 'northstar-cloud',
+      domain: 'northstar.example',
+    },
+    update: {
+      name: 'Northstar Cloud',
+    },
+  });
 
-  for (const file of files) {
-    const spec = DOCUMENT_ACCESS[file];
-    if (!spec) {
-      console.warn(`  documents: no access mapping for ${file}, skipped`);
-      continue;
-    }
+  for (const [, u] of users.entries()) {
+    let wsRole: 'OWNER' | 'ADMIN' | 'MANAGER' | 'AGENT' | 'VIEWER' = 'AGENT';
+    if (u.role === 'ADMIN') wsRole = 'OWNER';
+    else if (u.role === 'MANAGER') wsRole = 'MANAGER';
+    else if (u.role === 'PUBLIC') wsRole = 'VIEWER';
 
-    const bytes = await readFile(path.join(corpusDir, file));
-    const result = await ingestSource({
-      knowledgeBaseId,
-      title: spec.title,
-      accessLevel: spec.accessLevel,
-      sourceType: 'MARKDOWN',
-      bytes,
-      originalFilename: file,
-      mimeType: 'text/markdown',
-      uploadedBy: adminId,
+    await prisma.workspaceMember.upsert({
+      where: {
+        workspaceId_userId: {
+          workspaceId: workspace.id,
+          userId: u.id,
+        },
+      },
+      create: {
+        workspaceId: workspace.id,
+        userId: u.id,
+        role: wsRole,
+      },
+      update: {
+        role: wsRole,
+      },
     });
-
-    if (result.ok) {
-      console.log(
-        `  documents: indexed "${spec.title}" [${spec.accessLevel}] -> ${result.chunkCount} chunks`,
-      );
-    } else if (result.duplicateOf) {
-      console.log(`  documents: "${spec.title}" already present, skipped`);
-    } else {
-      console.warn(`  documents: FAILED "${spec.title}": ${result.error?.message}`);
-    }
   }
 
-  // A deliberately corrupt file, so the dashboard shows a real failure state and
-  // the retry path has something to act on.
-  const corrupt = Buffer.from('%PDF-1.7\nthis file is intentionally truncated and unparseable');
-  const failed = await ingestSource({
-    knowledgeBaseId,
-    title: 'Partner Onboarding Pack (damaged upload)',
-    accessLevel: 'PUBLIC',
-    sourceType: 'PDF',
-    bytes: corrupt,
-    originalFilename: 'partner-onboarding-pack.pdf',
-    mimeType: 'application/pdf',
-    uploadedBy: adminId,
-  });
-  console.log(
-    `  documents: simulated failure "${failed.ok ? 'unexpectedly succeeded' : failed.error?.stage}" recorded`,
-  );
+  console.log(`  workspace: "${workspace.name}" created with members`);
+  return workspace;
 }
 
-interface SeedTurn {
+async function seedCrm(workspaceId: string, users: Map<string, { id: string; role: Role }>) {
+  const admin = users.get('admin@atlasknowledge.demo');
+  const manager = users.get('manager@atlasknowledge.demo');
+  const employee = users.get('employee@atlasknowledge.demo');
+
+  // 1. Companies
+  const companySpecs = [
+    { name: 'Acme Labs', domain: 'acme.example', industry: 'Cloud & AI', employeeRange: '50-200', country: 'United States', lifecycle: 'QUALIFIED_LEAD' as const },
+    { name: 'Apex Dynamics', domain: 'apexdynamics.example', industry: 'Fintech', employeeRange: '200-500', country: 'United Kingdom', lifecycle: 'CUSTOMER' as const },
+    { name: 'Horizon Health', domain: 'horizonhealth.example', industry: 'Healthcare', employeeRange: '500-1000', country: 'United States', lifecycle: 'OPPORTUNITY' as const },
+    { name: 'Nexus Retail', domain: 'nexusretail.example', industry: 'E-commerce', employeeRange: '100-250', country: 'Germany', lifecycle: 'LEAD' as const },
+    { name: 'Stellar Financial', domain: 'stellarfin.example', industry: 'Banking', employeeRange: '1000+', country: 'Singapore', lifecycle: 'CUSTOMER' as const },
+    { name: 'CyberShield Systems', domain: 'cybershield.example', industry: 'Cybersecurity', employeeRange: '50-100', country: 'Canada', lifecycle: 'QUALIFIED_LEAD' as const },
+  ];
+
+  const companyMap = new Map<string, string>();
+  for (const c of companySpecs) {
+    const comp = await prisma.company.upsert({
+      where: { workspaceId_domain: { workspaceId, domain: c.domain } },
+      create: {
+        workspaceId,
+        name: c.name,
+        domain: c.domain,
+        website: `https://${c.domain}`,
+        industry: c.industry,
+        employeeRange: c.employeeRange,
+        country: c.country,
+        lifecycle: c.lifecycle,
+        ownerId: manager?.id,
+      },
+      update: {
+        name: c.name,
+        lifecycle: c.lifecycle,
+      },
+    });
+    companyMap.set(c.name, comp.id);
+  }
+
+  // 2. Maya Chen (Flagship Demo Buyer) + Other Contacts
+  const acmeId = companyMap.get('Acme Labs');
+  const apexId = companyMap.get('Apex Dynamics');
+  const horizonId = companyMap.get('Horizon Health');
+  const nexusId = companyMap.get('Nexus Retail');
+
+  const maya = await prisma.contact.upsert({
+    where: { workspaceId_normalizedEmail: { workspaceId, normalizedEmail: 'maya@acme.example' } },
+    create: {
+      workspaceId,
+      firstName: 'Maya',
+      lastName: 'Chen',
+      displayName: 'Maya Chen',
+      primaryEmail: 'maya@acme.example',
+      normalizedEmail: 'maya@acme.example',
+      phone: '+1 (555) 019-2834',
+      visitorKey: 'visitor_maya_acme',
+      companyId: acmeId,
+      ownerId: manager?.id,
+      lifecycleStage: 'QUALIFIED_LEAD',
+      leadStatus: 'QUALIFIED',
+      leadScore: 74,
+      leadTier: 'Qualified Lead',
+      scoreFactors: [
+        { factor: 'Team plan evaluation', points: 20, provenance: 'DERIVED' },
+        { factor: '~80 user requirement provided', points: 15, provenance: 'PROVIDED' },
+        { factor: 'Deployment next month timeline', points: 15, provenance: 'PROVIDED' },
+        { factor: 'Security controls evaluation', points: 10, provenance: 'DERIVED' },
+        { factor: 'Contact details provided', points: 8, provenance: 'PROVIDED' },
+        { factor: 'Multiple substantive interactions', points: 6, provenance: 'SYSTEM' },
+      ],
+      source: 'Public Demo',
+      sourceDetail: 'Interactive Chat Assistant Session',
+      preferredLanguage: 'en',
+      timezone: 'America/New_York',
+    },
+    update: {
+      leadScore: 74,
+      leadStatus: 'QUALIFIED',
+    },
+  });
+
+  // Customer Intelligence for Maya
+  await prisma.customerIntelligence.upsert({
+    where: { contactId: maya.id },
+    create: {
+      workspaceId,
+      contactId: maya.id,
+      summary:
+        'Maya Chen is evaluating the Team plan for approximately 80 users at Acme Labs and wants to launch next month. She asked about pricing and security controls and explicitly requested a sales follow-up.',
+      primaryIntent: 'Purchase evaluation',
+      secondaryIntent: 'Security & Compliance Review',
+      customerNeed: 'Governed Knowledge Engine with SAML & RBAC for 80 team members',
+      painPoint: 'Internal policies scattered across PDFs with inconsistent answers',
+      productInterest: 'Team Plan',
+      urgency: 'HIGH',
+      sentiment: 'POSITIVE',
+      requestedFollowUp: true,
+      timeline: 'next month',
+      seatRequirement: 80,
+      explicitRequirements: ['SAML SSO', 'Role-based sensitivity filters', 'SOC2 Compliance', '30-day refund guarantee'],
+      recommendedNextAction: 'Schedule technical demo call with Acme Labs engineering team',
+      confidence: 0.92,
+      provenance: 'DERIVED',
+      humanOverride: false,
+      locked: false,
+    },
+    update: {
+      summary:
+        'Maya Chen is evaluating the Team plan for approximately 80 users at Acme Labs and wants to launch next month.',
+    },
+  });
+
+  const additionalContacts = [
+    { firstName: 'Alex', lastName: 'Vance', email: 'alex.vance@apexdynamics.example', companyId: apexId, stage: 'CUSTOMER' as const, score: 90 },
+    { firstName: 'Elena', lastName: 'Rostova', email: 'elena.rostova@horizonhealth.example', companyId: horizonId, stage: 'OPPORTUNITY' as const, score: 68 },
+    { firstName: 'Marcus', lastName: 'Thorne', email: 'marcus.t@nexusretail.example', companyId: nexusId, stage: 'LEAD' as const, score: 42 },
+    { firstName: 'Sarah', lastName: 'Jenkins', email: 'sarah.j@acme.example', companyId: acmeId, stage: 'QUALIFIED_LEAD' as const, score: 65 },
+    { firstName: 'David', lastName: 'Kim', email: 'david.kim@stellarfin.example', companyId: companyMap.get('Stellar Financial'), stage: 'CUSTOMER' as const, score: 85 },
+    { firstName: 'Priya', lastName: 'Patel', email: 'p.patel@cybershield.example', companyId: companyMap.get('CyberShield Systems'), stage: 'QUALIFIED_LEAD' as const, score: 71 },
+  ];
+
+  for (const c of additionalContacts) {
+    await prisma.contact.upsert({
+      where: { workspaceId_normalizedEmail: { workspaceId, normalizedEmail: c.email } },
+      create: {
+        workspaceId,
+        firstName: c.firstName,
+        lastName: c.lastName,
+        displayName: `${c.firstName} ${c.lastName}`,
+        primaryEmail: c.email,
+        normalizedEmail: c.email,
+        companyId: c.companyId,
+        ownerId: manager?.id,
+        lifecycleStage: c.stage,
+        leadStatus: c.stage === 'CUSTOMER' ? 'CLOSED' : 'OPEN',
+        leadScore: c.score,
+        leadTier: c.score > 70 ? 'Qualified Lead' : 'Lead',
+        source: 'Website Chat',
+      },
+      update: {},
+    });
+  }
+
+  // 3. Pipeline & Deals
+  const pipeline = await prisma.pipeline.upsert({
+    where: { id: 'default-sales-pipeline' },
+    create: {
+      id: 'default-sales-pipeline',
+      workspaceId,
+      name: 'Standard B2B Sales Pipeline',
+      isDefault: true,
+    },
+    update: {},
+  });
+
+  const stageSpecs = [
+    { name: 'New', order: 1, winProbability: 0.1 },
+    { name: 'Qualified', order: 2, winProbability: 0.25 },
+    { name: 'Discovery', order: 3, winProbability: 0.4 },
+    { name: 'Evaluation', order: 4, winProbability: 0.6 },
+    { name: 'Proposal', order: 5, winProbability: 0.75 },
+    { name: 'Negotiation', order: 6, winProbability: 0.9 },
+    { name: 'Won', order: 7, winProbability: 1.0 },
+    { name: 'Lost', order: 8, winProbability: 0.0 },
+  ];
+
+  const stageMap = new Map<string, string>();
+  for (const st of stageSpecs) {
+    const stage = await prisma.pipelineStage.create({
+      data: {
+        pipelineId: pipeline.id,
+        name: st.name,
+        order: st.order,
+        winProbability: st.winProbability,
+      },
+    });
+    stageMap.set(st.name, stage.id);
+  }
+
+  // Acme Labs Deal
+  const evalStageId = (stageMap.get('Evaluation') ?? stageMap.values().next().value) as string;
+  await prisma.deal.create({
+    data: {
+      workspaceId,
+      name: 'Acme Labs — 80 User Team Expansion',
+      pipelineId: pipeline.id,
+      stageId: evalStageId,
+      primaryCompanyId: acmeId,
+      primaryContactId: maya.id,
+      ownerId: manager?.id,
+      amount: 24000,
+      currency: 'USD',
+      probability: 0.6,
+      expectedCloseDate: new Date(Date.now() + 30 * 24 * 3600 * 1000),
+      source: 'Public Demo Assistant',
+      status: 'OPEN',
+    },
+  });
+
+  // Apex Dynamics Deal
+  const wonStageId = stageMap.get('Won') ?? evalStageId;
+  await prisma.deal.create({
+    data: {
+      workspaceId,
+      name: 'Apex Dynamics — Enterprise Workspace License',
+      pipelineId: pipeline.id,
+      stageId: wonStageId,
+      primaryCompanyId: apexId,
+      ownerId: admin?.id,
+      amount: 48000,
+      currency: 'USD',
+      probability: 1.0,
+      status: 'WON',
+      closedAt: new Date(),
+    },
+  });
+
+  // 4. Tasks & Tickets
+  await prisma.task.create({
+    data: {
+      workspaceId,
+      title: 'Follow up with Maya Chen (Acme Labs)',
+      description: 'Review Team plan security documentation and schedule 80-seat onboarding call.',
+      type: 'FOLLOW_UP',
+      status: 'PENDING',
+      priority: 'HIGH',
+      ownerId: manager?.id,
+      contactId: maya.id,
+      companyId: acmeId,
+      dueAt: new Date(Date.now() + 2 * 24 * 3600 * 1000),
+      createdBy: admin?.id,
+    },
+  });
+
+  await prisma.task.create({
+    data: {
+      workspaceId,
+      title: 'Send SOC2 Type II compliance package to CyberShield Systems',
+      type: 'EMAIL',
+      status: 'PENDING',
+      priority: 'NORMAL',
+      ownerId: employee?.id,
+      companyId: companyMap.get('CyberShield Systems'),
+      dueAt: new Date(Date.now() + 3 * 24 * 3600 * 1000),
+    },
+  });
+
+  await prisma.ticket.create({
+    data: {
+      workspaceId,
+      subject: 'Inquiry on SAML SSO configuration for Azure AD',
+      description: 'Customer asking for step-by-step metadata XML upload guide for single sign-on.',
+      status: 'OPEN',
+      priority: 'HIGH',
+      contactId: maya.id,
+      companyId: acmeId,
+      assigneeId: manager?.id,
+      category: 'Authentication',
+      productArea: 'SSO / Identity',
+      urgency: 'HIGH',
+    },
+  });
+
+  // 5. Automation Rules
+  await prisma.automationRule.create({
+    data: {
+      workspaceId,
+      name: 'High Lead Score Opportunity Creation',
+      description: 'Automatically notify assigned account owner when lead score reaches 70+',
+      trigger: 'LEAD_SCORE_CHANGED',
+      conditions: [{ field: 'leadScore', operator: 'gte', value: 70 }],
+      actions: [{ type: 'CREATE_TASK', params: { title: 'Follow up with qualified high-scoring prospect' } }],
+      active: true,
+    },
+  });
+
+  await prisma.automationRule.create({
+    data: {
+      workspaceId,
+      name: 'Negative Feedback Support Escalation',
+      description: 'Create support ticket when a customer marks an answer as unhelpful',
+      trigger: 'NEGATIVE_FEEDBACK',
+      conditions: [{ field: 'rating', operator: 'equals', value: 'NOT_HELPFUL' }],
+      actions: [{ type: 'CREATE_TICKET', params: { priority: 'HIGH' } }],
+      active: true,
+    },
+  });
+
+  console.log('  crm: companies, contacts, Maya Chen intelligence, pipeline, deals, tasks, tickets & automation rules ready');
+}
+
+const SEED_TURNS: {
   email: string;
   question: string;
-  /** Continue the previous conversation for this user rather than starting a new one. */
-  followUp?: boolean;
-  feedback?: 'HELPFUL' | 'PARTIALLY_HELPFUL' | 'NOT_HELPFUL';
-  feedbackReason?: 'INCORRECT_ANSWER' | 'MISSING_INFORMATION' | 'TOO_VAGUE' | 'ACCESS_ISSUE';
-  daysAgo: number;
-}
-
-const SEED_TURNS: SeedTurn[] = [
-  {
-    email: 'viewer@atlasknowledge.demo',
-    question: 'What is the refund window for an annual subscription?',
-    feedback: 'HELPFUL',
-    daysAgo: 9,
-  },
-  {
-    email: 'viewer@atlasknowledge.demo',
-    question: 'Does that apply to monthly plans as well?',
-    followUp: true,
-    feedback: 'HELPFUL',
-    daysAgo: 9,
-  },
-  {
-    email: 'customer@atlasknowledge.demo',
-    question: 'How much does the Team plan cost per user?',
-    feedback: 'HELPFUL',
-    daysAgo: 8,
-  },
-  {
-    email: 'customer@atlasknowledge.demo',
-    question: 'Is there a discount for paying annually?',
-    followUp: true,
-    daysAgo: 8,
-  },
-  {
-    email: 'viewer@atlasknowledge.demo',
-    question: 'How long is the free trial and do I need a credit card?',
-    feedback: 'HELPFUL',
-    daysAgo: 7,
-  },
-  {
-    email: 'customer@atlasknowledge.demo',
-    question: 'What encryption do you use for data at rest?',
-    feedback: 'HELPFUL',
-    daysAgo: 6,
-  },
-  {
-    email: 'viewer@atlasknowledge.demo',
-    question: 'Are you HIPAA compliant?',
-    feedback: 'HELPFUL',
-    daysAgo: 6,
-  },
-  {
-    email: 'employee@atlasknowledge.demo',
-    question: 'How many days of annual leave do employees receive?',
-    feedback: 'HELPFUL',
-    daysAgo: 5,
-  },
-  {
-    email: 'employee@atlasknowledge.demo',
-    question: 'How much of that can be carried over to next year?',
-    followUp: true,
-    daysAgo: 5,
-  },
-  {
-    email: 'manager@atlasknowledge.demo',
-    question: 'Who is allowed to act as Incident Commander for a SEV1?',
-    feedback: 'HELPFUL',
-    daysAgo: 4,
-  },
-  {
-    email: 'manager@atlasknowledge.demo',
-    question: 'When does the 72 hour notification clock start?',
-    followUp: true,
-    feedback: 'HELPFUL',
-    daysAgo: 4,
-  },
-  {
-    email: 'customer@atlasknowledge.demo',
-    question: 'What happens to my data 90 days after I cancel?',
-    feedback: 'HELPFUL',
-    daysAgo: 3,
-  },
-  {
-    email: 'viewer@atlasknowledge.demo',
-    question: 'Why did my Flow stop running?',
-    feedback: 'PARTIALLY_HELPFUL',
-    feedbackReason: 'MISSING_INFORMATION',
-    daysAgo: 3,
-  },
-  {
-    email: 'customer@atlasknowledge.demo',
-    question: 'What is the parental leave policy for employees?',
-    feedback: 'NOT_HELPFUL',
-    feedbackReason: 'ACCESS_ISSUE',
-    daysAgo: 2,
-  },
-  {
-    email: 'viewer@atlasknowledge.demo',
-    question: 'Do you offer a native mobile application for iOS?',
-    daysAgo: 2,
-  },
+  role: Role;
+  giveFeedback?: { rating: 'HELPFUL' | 'NOT_HELPFUL'; reason?: 'WRONG_SOURCE'; comment?: string };
+}[] = [
   {
     email: 'admin@atlasknowledge.demo',
-    question: 'What are the audit log retention periods per plan?',
-    feedback: 'HELPFUL',
-    daysAgo: 1,
+    role: 'ADMIN',
+    question: 'What is our official SLA for system availability and incident notification?',
   },
   {
-    email: 'viewer@atlasknowledge.demo',
-    question: 'What is the maximum number of steps in a single Flow run?',
-    feedback: 'HELPFUL',
-    daysAgo: 1,
+    email: 'manager@atlasknowledge.demo',
+    role: 'MANAGER',
+    question: 'When does the 72 hour notification clock start for severe incidents?',
   },
   {
     email: 'employee@atlasknowledge.demo',
-    question: 'How should I handle a prospect asking about HIPAA?',
-    feedback: 'HELPFUL',
-    daysAgo: 1,
+    role: 'EMPLOYEE',
+    question: 'What is our policy on remote work password security and VPN requirements?',
+  },
+  {
+    email: 'employee@atlasknowledge.demo',
+    role: 'EMPLOYEE',
+    question: 'How should I handle a prospect asking about HIPAA compliance?',
+  },
+  {
+    email: 'customer@atlasknowledge.demo',
+    role: 'CUSTOMER',
+    question: 'What is the refund window for an annual subscription?',
+    giveFeedback: { rating: 'HELPFUL' },
+  },
+  {
+    email: 'customer@atlasknowledge.demo',
+    role: 'CUSTOMER',
+    question: 'Does that refund window apply to monthly plans too?',
+  },
+  {
+    email: 'viewer@atlasknowledge.demo',
+    role: 'PUBLIC',
+    question: 'What features are included in the Northstar Cloud Team plan?',
+  },
+  {
+    email: 'viewer@atlasknowledge.demo',
+    role: 'PUBLIC',
+    question: 'What encryption standard is used for customer data at rest?',
+  },
+  {
+    email: 'viewer@atlasknowledge.demo',
+    role: 'PUBLIC',
+    question: 'How do I configure custom SAML SSO single sign on?',
+    giveFeedback: {
+      rating: 'NOT_HELPFUL',
+      reason: 'WRONG_SOURCE',
+      comment: 'The public FAQ does not include step-by-step XML metadata upload steps.',
+    },
+  },
+  {
+    email: 'viewer@atlasknowledge.demo',
+    role: 'PUBLIC',
+    question: 'Can you provide the direct internal VPN gateway IP address for engineering?',
   },
 ];
+
+async function seedDocuments(knowledgeBaseId: string, adminUserId: string): Promise<void> {
+  const sampleDir = path.join(process.cwd(), 'sample-data', 'documents');
+  const files = (await readdir(sampleDir)).filter((f) => f.endsWith('.md')).sort();
+
+  for (const filename of files) {
+    const spec = DOCUMENT_ACCESS[filename] ?? {
+      accessLevel: 'PUBLIC' as const,
+      title: filename,
+    };
+    const absolutePath = path.join(sampleDir, filename);
+    const content = await readFile(absolutePath, 'utf8');
+
+    const result = await ingestSource({
+      knowledgeBaseId,
+      sourceType: 'MARKDOWN',
+      title: spec.title,
+      originalFilename: filename,
+      accessLevel: spec.accessLevel,
+      uploadedBy: adminUserId,
+      bytes: Buffer.from(content, 'utf8'),
+      mimeType: 'text/markdown',
+    });
+
+    console.log(`  ingested: "${spec.title}" (${result.chunkCount} chunks, access=${spec.accessLevel})`);
+  }
+}
 
 async function seedConversations(
   users: Map<string, { id: string; role: Role }>,
   knowledgeBaseId: string,
 ): Promise<void> {
-  const activeConversation = new Map<string, string>();
   let supported = 0;
   let unsupported = 0;
   let escalations = 0;
 
-  for (const turn of SEED_TURNS) {
-    const user = users.get(turn.email);
+  for (let i = 0; i < SEED_TURNS.length; i++) {
+    const spec = SEED_TURNS[i];
+    const user = users.get(spec.email);
     if (!user) continue;
 
+    const timestamp = new Date(Date.now() - (SEED_TURNS.length - i) * 3600 * 1000);
+
     const result = await ask({
-      question: turn.question,
-      role: user.role,
+      question: spec.question,
       userId: user.id,
-      conversationId: turn.followUp ? (activeConversation.get(turn.email) ?? null) : null,
       knowledgeBaseId,
+      role: spec.role,
     });
 
-    activeConversation.set(turn.email, result.conversationId);
-    if (result.answer.grounding === 'UNSUPPORTED') unsupported += 1;
-    else supported += 1;
-    if (result.escalationId) escalations += 1;
+    if (result.answer.grounding === 'SUPPORTED' || result.answer.grounding === 'PARTIALLY_SUPPORTED') {
+      supported++;
+    } else {
+      unsupported++;
+    }
+    if (Boolean(result.escalationId)) escalations++;
 
-    if (turn.feedback) {
+    if (spec.giveFeedback && result.messageId) {
       await submitFeedback({
         messageId: result.messageId,
         userId: user.id,
-        rating: turn.feedback,
-        reason: turn.feedbackReason ?? null,
+        rating: spec.giveFeedback.rating,
+        reason: spec.giveFeedback.reason,
+        comment: spec.giveFeedback.comment,
       });
     }
 
-    // Backdate the turn so the activity chart shows a realistic spread rather
-    // than every question landing in the same minute.
-    const timestamp = new Date(Date.now() - turn.daysAgo * 24 * 60 * 60 * 1000);
-    await prisma.$executeRaw`
-      UPDATE "Message" SET "createdAt" = ${timestamp} WHERE "conversationId" = ${result.conversationId}
-    `;
-    await prisma.$executeRaw`
-      UPDATE "RetrievalLog" SET "createdAt" = ${timestamp} WHERE "conversationId" = ${result.conversationId}
-    `;
     await prisma.$executeRaw`
       UPDATE "Conversation" SET "createdAt" = ${timestamp}, "updatedAt" = ${timestamp} WHERE "id" = ${result.conversationId}
     `;
@@ -449,6 +673,9 @@ async function main() {
 
   await seedSettings(admin.id);
 
+  const workspace = await seedWorkspace(users);
+  await seedCrm(workspace.id, users);
+
   const knowledgeBase = await prisma.knowledgeBase.upsert({
     where: { slug: 'northstar-cloud' },
     create: {
@@ -458,8 +685,12 @@ async function main() {
         'Approved product, pricing, policy, and internal documentation for the fictional Northstar Cloud platform.',
       visibility: 'INTERNAL',
       ownerId: admin.id,
+      workspaceId: workspace.id,
     },
-    update: { ownerId: admin.id },
+    update: {
+      ownerId: admin.id,
+      workspaceId: workspace.id,
+    },
   });
   console.log(`  knowledge base: "${knowledgeBase.name}" ready`);
 

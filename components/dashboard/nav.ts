@@ -1,13 +1,5 @@
 import type { Permission } from '@/lib/auth/rbac';
 
-/**
- * Dashboard navigation.
- *
- * Each entry declares the permission it needs. The sidebar hides what the role
- * cannot use, and every page independently re-checks the same permission
- * server-side — hiding a link is a courtesy, never the control.
- */
-
 export interface NavItem {
   href: string;
   label: string;
@@ -28,13 +20,48 @@ export const NAV_GROUPS: NavGroup[] = [
         href: '/dashboard',
         label: 'Overview',
         permission: 'chat:authenticated',
-        description: 'Platform status and headline figures',
+        description: 'Platform status, CRM customer intelligence, and headline metrics',
+      },
+    ],
+  },
+  {
+    label: 'Customers',
+    items: [
+      {
+        href: '/dashboard/inbox',
+        label: 'Inbox',
+        permission: 'conversation:read:own',
+        description: '3-column Customer 360 intelligence inbox & composer',
       },
       {
-        href: '/dashboard/analytics',
-        label: 'Analytics',
-        permission: 'analytics:view',
-        description: 'Answer quality, usage, and content gaps',
+        href: '/dashboard/contacts',
+        label: 'Contacts',
+        permission: 'chat:authenticated',
+        description: 'Identified customers, leads, and intelligence records',
+      },
+      {
+        href: '/dashboard/companies',
+        label: 'Companies',
+        permission: 'chat:authenticated',
+        description: 'Target accounts, domains, and team relationships',
+      },
+      {
+        href: '/dashboard/deals',
+        label: 'Deals',
+        permission: 'chat:authenticated',
+        description: 'Opportunity pipeline, Kanban board, and sales stages',
+      },
+      {
+        href: '/dashboard/tasks',
+        label: 'Tasks',
+        permission: 'chat:authenticated',
+        description: 'Follow-ups, sales calls, meetings, and team actions',
+      },
+      {
+        href: '/dashboard/tickets',
+        label: 'Tickets',
+        permission: 'chat:authenticated',
+        description: 'Durable customer support cases and SLA tracking',
       },
     ],
   },
@@ -42,103 +69,80 @@ export const NAV_GROUPS: NavGroup[] = [
     label: 'Knowledge',
     items: [
       {
+        href: '/dashboard/knowledge-bases',
+        label: 'Knowledge Bases',
+        permission: 'knowledgebase:read',
+        description: 'Collections grouping approved documents',
+      },
+      {
         href: '/dashboard/documents',
         label: 'Documents',
         permission: 'document:read',
-        description: 'Every indexed source and its processing state',
+        description: 'Indexed sources, RBAC access levels, and chunk states',
       },
       {
-        href: '/dashboard/upload',
-        label: 'Add sources',
-        permission: 'document:upload',
-        description: 'Upload files, register URLs, or write entries',
+        href: '/dashboard/knowledge-health',
+        label: 'Knowledge Health',
+        permission: 'document:read',
+        description: 'Knowledge gaps, source conflicts, and business impact',
       },
       {
-        href: '/dashboard/knowledge-bases',
-        label: 'Knowledge bases',
-        permission: 'knowledgebase:read',
-        description: 'Collections that group documents',
+        href: '/dashboard/evaluations',
+        label: 'Evaluations',
+        permission: 'analytics:view',
+        description: 'Retrieval accuracy workbench & test history',
       },
     ],
   },
   {
-    label: 'Conversations',
+    label: 'Insights',
     items: [
       {
-        href: '/dashboard/conversations',
-        label: 'Conversations',
-        permission: 'conversation:read:own',
-        description: 'Question history and retrieval outcomes',
-      },
-      {
-        href: '/dashboard/escalations',
-        label: 'Escalations',
-        permission: 'escalation:read',
-        description: 'Questions waiting on a human',
+        href: '/dashboard/analytics',
+        label: 'Analytics',
+        permission: 'analytics:view',
+        description: 'Real conversation funnel, retrieval metrics, and sales insights',
       },
       {
         href: '/dashboard/feedback',
         label: 'Feedback',
         permission: 'feedback:review',
-        description: 'What users marked helpful or wrong',
+        description: 'User ratings, unhelpful answers, and correction loops',
       },
     ],
   },
   {
-    label: 'Configuration',
+    label: 'System',
     items: [
       {
-        href: '/dashboard/retrieval',
-        label: 'Retrieval',
+        href: '/dashboard/automations',
+        label: 'Automations',
         permission: 'settings:retrieval:read',
-        description: 'Chunking, retrieval depth, and thresholds',
-      },
-      {
-        href: '/dashboard/models',
-        label: 'AI providers',
-        permission: 'settings:models:read',
-        description: 'Embedding and language model selection',
+        description: 'Workspace rules engine & trigger workflows',
       },
       {
         href: '/dashboard/integrations',
         label: 'Integrations',
         permission: 'settings:models:read',
-        description: 'Connected and available services',
-      },
-      {
-        href: '/dashboard/users',
-        label: 'Users and roles',
-        permission: 'user:read',
-        description: 'Who can reach which access level',
-      },
-    ],
-  },
-  {
-    label: 'Operations',
-    items: [
-      {
-        href: '/dashboard/health',
-        label: 'System health',
-        permission: 'health:read',
-        description: 'Live component checks',
+        description: 'Connected databases, storage, and AI providers',
       },
       {
         href: '/dashboard/audit',
-        label: 'Audit log',
+        label: 'Audit Log',
         permission: 'audit:read',
-        description: 'Append-only record of every action',
+        description: 'Append-only audit log of all system actions',
       },
       {
-        href: '/dashboard/demo',
-        label: 'Demo controls',
-        permission: 'demo:reset',
-        description: 'Reset demonstration activity',
+        href: '/dashboard/health',
+        label: 'System Health',
+        permission: 'health:read',
+        description: 'Live component checks & latency diagnostics',
       },
       {
         href: '/dashboard/settings',
         label: 'Settings',
         permission: 'chat:authenticated',
-        description: 'Your account and session',
+        description: 'Account settings, session revocation, and workspace config',
       },
     ],
   },

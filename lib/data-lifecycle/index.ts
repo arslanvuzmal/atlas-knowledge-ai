@@ -109,13 +109,13 @@ export async function applyRetentionPolicies(): Promise<{
  * Exports all data associated with a user (GDPR Article 20 - Right to Data Portability).
  */
 export async function exportUserData(userId: string): Promise<{
-  user: any;
-  conversations: any[];
-  messages: any[];
-  feedback: any[];
-  escalations: any[];
-  retrievalLogs: any[];
-  auditLogs: any[];
+  user: Record<string, unknown>;
+  conversations: Record<string, unknown>[];
+  messages: Record<string, unknown>[];
+  feedback: Record<string, unknown>[];
+  escalations: Record<string, unknown>[];
+  retrievalLogs: Record<string, unknown>[];
+  auditLogs: Record<string, unknown>[];
 }> {
   const user = await prisma.user.findUnique({
     where: { id: userId },

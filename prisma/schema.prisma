@@ -1,7 +1,5 @@
 // Atlas Knowledge AI - relational + vector schema.
-// The `embedding` column on DocumentChunk is a pgvector column. Prisma cannot
-// select `Unsupported` columns, so every vector read/write goes through the
-// typed raw-SQL helpers in lib/database/vector.ts.
+// Governance: Governed RAG + Customer Intelligence CRM + Enterprise Operations Platform
 
 generator client {
   provider        = "prisma-client-js"
@@ -27,6 +25,14 @@ enum Role {
   ADMIN
 }
 
+enum WorkspaceRole {
+  OWNER
+  ADMIN
+  MANAGER
+  AGENT
+  VIEWER
+}
+
 enum UserStatus {
   ACTIVE
   SUSPENDED
@@ -39,8 +45,6 @@ enum Visibility {
   RESTRICTED
 }
 
-/// Sensitivity classification carried by every document and every chunk.
-/// Retrieval filters on this before the vector search and again after reranking.
 enum AccessLevel {
   PUBLIC
   CUSTOMER
@@ -90,7 +94,6 @@ enum MessageRole {
   SYSTEM
 }
 
-/// How well a generated answer was supported by retrieved sources.
 enum GroundingLevel {
   SUPPORTED
   PARTIALLY_SUPPORTED
@@ -163,6 +166,196 @@ enum IntegrationStatus {
   NOT_CONFIGURED
 }
 
+enum LifecycleStage {
+  VISITOR
+  LEAD
+  QUALIFIED_LEAD
+  OPPORTUNITY
+  CUSTOMER
+  FORMER_CUSTOMER
+}
+
+enum LeadStatus {
+  NEW
+  OPEN
+  WORKING
+  WAITING
+  QUALIFIED
+  UNQUALIFIED
+  NURTURE
+  CLOSED
+}
+
+enum ProvenanceSource {
+  PROVIDED
+  DERIVED
+  IMPORTED
+  SYSTEM
+  HUMAN_EDITED
+}
+
+enum CrmActivityType {
+  VISITOR_CREATED
+  CONTACT_IDENTIFIED
+  CONTACT_UPDATED
+  COMPANY_LINKED
+  CHAT_STARTED
+  CUSTOMER_MESSAGE
+  AI_RESPONSE
+  HUMAN_RESPONSE
+  INTERNAL_NOTE
+  ATTRIBUTE_DETECTED
+  ATTRIBUTE_UPDATED
+  TAG_ADDED
+  LEAD_SCORE_CHANGED
+  DEAL_CREATED
+  DEAL_STAGE_CHANGED
+  TASK_CREATED
+  TASK_COMPLETED
+  TICKET_CREATED
+  TICKET_UPDATED
+  ESCALATION_CREATED
+  ESCALATION_RESOLVED
+  FEEDBACK_RECEIVED
+  DOCUMENT_CITED
+  KNOWLEDGE_GAP_DETECTED
+  CONFLICT_DETECTED
+}
+
+enum DealStatus {
+  OPEN
+  WON
+  LOST
+}
+
+enum TaskType {
+  FOLLOW_UP
+  CALL
+  EMAIL
+  REVIEW
+  DEMO
+  MEETING
+  SUPPORT
+  OTHER
+}
+
+enum TaskPriority {
+  LOW
+  NORMAL
+  HIGH
+  URGENT
+}
+
+enum TaskStatus {
+  PENDING
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+}
+
+enum TicketStatus {
+  NEW
+  OPEN
+  PENDING
+  RESOLVED
+  CLOSED
+}
+
+enum PropertyType {
+  TEXT
+  NUMBER
+  BOOLEAN
+  SELECT
+  MULTI_SELECT
+  DATE
+  REFERENCE
+}
+
+enum RuleTrigger {
+  CONVERSATION_STARTED
+  ATTRIBUTE_CHANGED
+  LEAD_SCORE_CHANGED
+  DEAL_STAGE_CHANGED
+  TICKET_CREATED
+  NEGATIVE_FEEDBACK
+  KNOWLEDGE_GAP_CREATED
+}
+
+enum OutboxStatus {
+  PENDING
+  PROCESSING
+  PROCESSED
+  FAILED
+}
+
+enum KnowledgeGapStatus {
+  OPEN
+  ACKNOWLEDGED
+  RESOLVED
+  IGNORED
+}
+
+enum KnowledgeConflictStatus {
+  OPEN
+  IN_REVIEW
+  RESOLVED
+  DISMISSED
+}
+
+enum EvaluationRunStatus {
+  PENDING
+  RUNNING
+  COMPLETED
+  FAILED
+}
+
+// ============================================================================
+// Workspace & Multi-Tenancy
+// ============================================================================
+
+model Workspace {
+  id        String   @id @default(cuid())
+  name      String
+  slug      String   @unique
+  domain    String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  members             WorkspaceMember[]
+  contacts            Contact[]
+  companies           Company[]
+  conversations       Conversation[]
+  pipelines           Pipeline[]
+  deals               Deal[]
+  tasks               Task[]
+  tickets             Ticket[]
+  tags                Tag[]
+  propertyDefinitions PropertyDefinition[]
+  automationRules     AutomationRule[]
+  outboxEvents        OutboxEvent[]
+  backgroundJobs      BackgroundJob[]
+  knowledgeBases      KnowledgeBase[]
+  activities          CrmActivity[]
+
+  @@index([slug])
+}
+
+model WorkspaceMember {
+  id          String        @id @default(cuid())
+  workspaceId String
+  userId      String
+  role        WorkspaceRole @default(AGENT)
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, userId])
+  @@index([workspaceId])
+  @@index([userId])
+}
+
 // ============================================================================
 // Identity and access
 // ============================================================================
@@ -175,35 +368,39 @@ model User {
   externalId   String?    @unique
   role         Role       @default(CUSTOMER)
   status       UserStatus @default(ACTIVE)
-  /// Demo accounts can only authenticate while DEMO_MODE is enabled.
   isDemo       Boolean    @default(false)
   lastLoginAt  DateTime?
   createdAt    DateTime   @default(now())
   updatedAt    DateTime   @updatedAt
 
-  sessions           Session[]
-  knowledgeBases     KnowledgeBase[]
-  uploadedDocuments  Document[]        @relation("DocumentUploader")
-  conversations      Conversation[]
-  feedback           Feedback[]
-  escalations        Escalation[]      @relation("EscalationRequester")
-  assignedEscalations Escalation[]     @relation("EscalationAssignee")
-  auditLogs          AuditLog[]
+  sessions            Session[]
+  workspaceMemberships WorkspaceMember[]
+  knowledgeBases      KnowledgeBase[]
+  uploadedDocuments   Document[]        @relation("DocumentUploader")
+  conversations       Conversation[]
+  feedback            Feedback[]
+  escalations         Escalation[]      @relation("EscalationRequester")
+  assignedEscalations  Escalation[]     @relation("EscalationAssignee")
+  ownedContacts       Contact[]         @relation("ContactOwner")
+  ownedCompanies      Company[]         @relation("CompanyOwner")
+  ownedDeals          Deal[]            @relation("DealOwner")
+  ownedTasks          Task[]            @relation("TaskOwner")
+  assignedTickets     Ticket[]          @relation("TicketAssignee")
+  auditLogs           AuditLog[]
 
   @@index([role])
   @@index([status])
 }
 
 model Session {
-  id           String   @id @default(cuid())
-  /// SHA-256 of the session token. The raw token exists only in the cookie.
-  tokenHash    String   @unique
-  userId       String
-  expiresAt    DateTime
-  ipHash       String?
+  id            String    @id @default(cuid())
+  tokenHash     String    @unique
+  userId        String
+  expiresAt     DateTime
+  ipHash        String?
   userAgentHash String?
-  revokedAt    DateTime?
-  createdAt    DateTime @default(now())
+  revokedAt     DateTime?
+  createdAt     DateTime  @default(now())
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
@@ -211,15 +408,424 @@ model Session {
   @@index([expiresAt])
 }
 
-/// Backs the brute-force lockout. Rows are keyed by a hash of the identifier so
-/// the table never stores a plain email address for failed attempts.
 model LoginAttempt {
-  id           String   @id @default(cuid())
+  id             String   @id @default(cuid())
   identifierHash String
-  successful   Boolean  @default(false)
-  createdAt    DateTime @default(now())
+  successful     Boolean  @default(false)
+  createdAt      DateTime @default(now())
 
   @@index([identifierHash, createdAt])
+}
+
+// ============================================================================
+// CRM Core Entities
+// ============================================================================
+
+model Contact {
+  id                String         @id @default(cuid())
+  workspaceId       String
+  firstName         String?
+  lastName          String?
+  displayName       String
+  primaryEmail      String?
+  normalizedEmail   String?
+  phone             String?
+  visitorKey        String?
+  lifecycleStage    LifecycleStage @default(LEAD)
+  leadStatus        LeadStatus     @default(NEW)
+  leadScore         Int            @default(0)
+  leadTier          String         @default("Unqualified")
+  scoreFactors      Json?
+  ownerId           String?
+  companyId         String?
+  source            String         @default("Website Chat")
+  sourceDetail      String?
+  preferredLanguage String         @default("en")
+  timezone          String?
+  firstSeenAt       DateTime       @default(now())
+  lastSeenAt        DateTime       @default(now())
+  lastContactedAt   DateTime?
+  lastActivityAt    DateTime       @default(now())
+  createdAt         DateTime       @default(now())
+  updatedAt         DateTime       @updatedAt
+  archivedAt        DateTime?
+
+  workspace      Workspace             @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  owner          User?                 @relation("ContactOwner", fields: [ownerId], references: [id], onDelete: SetNull)
+  company        Company?              @relation(fields: [companyId], references: [id], onDelete: SetNull)
+  conversations  Conversation[]
+  activities     CrmActivity[]
+  deals          Deal[]
+  tasks          Task[]
+  tickets        Ticket[]
+  intelligence   CustomerIntelligence?
+  consents       ConsentRecord[]
+  propertyValues PropertyValue[]
+
+  @@unique([workspaceId, normalizedEmail])
+  @@index([workspaceId, visitorKey])
+  @@index([workspaceId, lifecycleStage])
+  @@index([workspaceId, leadStatus])
+  @@index([workspaceId, ownerId])
+  @@index([workspaceId, lastActivityAt])
+}
+
+model Company {
+  id             String         @id @default(cuid())
+  workspaceId    String
+  name           String
+  domain         String?
+  website        String?
+  industry       String?
+  employeeRange  String?
+  country        String?
+  lifecycle      LifecycleStage @default(LEAD)
+  ownerId        String?
+  source         String         @default("Organic")
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+  lastActivityAt DateTime       @default(now())
+
+  workspace  Workspace     @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  owner      User?         @relation("CompanyOwner", fields: [ownerId], references: [id], onDelete: SetNull)
+  contacts   Contact[]
+  deals      Deal[]
+  tasks      Task[]
+  tickets    Ticket[]
+  activities CrmActivity[]
+
+  @@unique([workspaceId, domain])
+  @@index([workspaceId, name])
+  @@index([workspaceId, ownerId])
+}
+
+model CrmActivity {
+  id             String          @id @default(cuid())
+  workspaceId    String
+  contactId      String?
+  companyId      String?
+  conversationId String?
+  dealId         String?
+  taskId         String?
+  ticketId       String?
+  actorId        String?
+  type           CrmActivityType
+  title          String
+  description    String?
+  metadata       Json?
+  createdAt      DateTime        @default(now())
+
+  workspace    Workspace     @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  contact      Contact?      @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  company      Company?      @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  conversation Conversation? @relation(fields: [conversationId], references: [id], onDelete: SetNull)
+  deal         Deal?         @relation(fields: [dealId], references: [id], onDelete: SetNull)
+  task         Task?         @relation(fields: [taskId], references: [id], onDelete: SetNull)
+  ticket       Ticket?       @relation(fields: [ticketId], references: [id], onDelete: SetNull)
+
+  @@index([workspaceId, createdAt])
+  @@index([contactId, createdAt])
+  @@index([companyId, createdAt])
+}
+
+model CustomerIntelligence {
+  id                     String           @id @default(cuid())
+  workspaceId            String
+  contactId              String           @unique
+  summary                String?
+  primaryIntent          String?
+  secondaryIntent        String?
+  customerNeed           String?
+  painPoint              String?
+  productInterest        String?
+  urgency                String?
+  sentiment              String?
+  requestedFollowUp      Boolean          @default(false)
+  timeline               String?
+  seatRequirement        Int?
+  explicitRequirements   String[]         @default([])
+  recommendedNextAction  String?
+  confidence             Float            @default(0.8)
+  provenance             ProvenanceSource @default(DERIVED)
+  sourceMessageIds       String[]         @default([])
+  humanOverride          Boolean          @default(false)
+  locked                 Boolean          @default(false)
+  createdAt              DateTime         @default(now())
+  updatedAt              DateTime         @updatedAt
+
+  contact Contact @relation(fields: [contactId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId, contactId])
+}
+
+// ============================================================================
+// Sales Pipeline & Deals
+// ============================================================================
+
+model Pipeline {
+  id          String   @id @default(cuid())
+  workspaceId String
+  name        String
+  isDefault   Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  workspace Workspace       @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  stages    PipelineStage[]
+  deals     Deal[]
+
+  @@index([workspaceId])
+}
+
+model PipelineStage {
+  id             String   @id @default(cuid())
+  pipelineId     String
+  name           String
+  order          Int
+  winProbability Float    @default(0.5)
+  createdAt      DateTime @default(now())
+
+  pipeline Pipeline @relation(fields: [pipelineId], references: [id], onDelete: Cascade)
+  deals    Deal[]
+
+  @@index([pipelineId, order])
+}
+
+model Deal {
+  id                   String     @id @default(cuid())
+  workspaceId          String
+  name                 String
+  pipelineId           String
+  stageId              String
+  primaryCompanyId     String?
+  primaryContactId     String?
+  ownerId              String?
+  amount               Float?
+  currency             String     @default("USD")
+  probability          Float?
+  expectedCloseDate    DateTime?
+  source               String     @default("Chat Conversation")
+  sourceConversationId String?
+  status               DealStatus @default(OPEN)
+  lossReason           String?
+  createdAt            DateTime   @default(now())
+  updatedAt            DateTime   @updatedAt
+  closedAt             DateTime?
+
+  workspace      Workspace     @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  pipeline       Pipeline      @relation(fields: [pipelineId], references: [id], onDelete: Cascade)
+  stage          PipelineStage @relation(fields: [stageId], references: [id], onDelete: Cascade)
+  primaryCompany Company?      @relation(fields: [primaryCompanyId], references: [id], onDelete: SetNull)
+  primaryContact Contact?      @relation(fields: [primaryContactId], references: [id], onDelete: SetNull)
+  owner          User?         @relation("DealOwner", fields: [ownerId], references: [id], onDelete: SetNull)
+  tasks          Task[]
+  tickets        Ticket[]
+  activities     CrmActivity[]
+
+  @@index([workspaceId, status])
+  @@index([workspaceId, stageId])
+  @@index([workspaceId, ownerId])
+}
+
+// ============================================================================
+// Tasks & Tickets
+// ============================================================================
+
+model Task {
+  id             String       @id @default(cuid())
+  workspaceId    String
+  title          String
+  description    String?
+  type           TaskType     @default(FOLLOW_UP)
+  status         TaskStatus   @default(PENDING)
+  priority       TaskPriority @default(NORMAL)
+  ownerId        String?
+  dueAt          DateTime?
+  contactId      String?
+  companyId      String?
+  dealId         String?
+  ticketId       String?
+  conversationId String?
+  createdBy      String?
+  completedAt    DateTime?
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  workspace    Workspace     @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  owner        User?         @relation("TaskOwner", fields: [ownerId], references: [id], onDelete: SetNull)
+  contact      Contact?      @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  company      Company?      @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  deal         Deal?         @relation(fields: [dealId], references: [id], onDelete: Cascade)
+  ticket       Ticket?       @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  conversation Conversation? @relation(fields: [conversationId], references: [id], onDelete: SetNull)
+  activities   CrmActivity[]
+
+  @@index([workspaceId, status, dueAt])
+  @@index([workspaceId, ownerId])
+}
+
+model Ticket {
+  id             String       @id @default(cuid())
+  workspaceId    String
+  subject        String
+  description    String?
+  status         TicketStatus @default(NEW)
+  priority       TaskPriority @default(NORMAL)
+  contactId      String?
+  companyId      String?
+  dealId         String?
+  conversationId String?
+  assigneeId     String?
+  category       String?
+  productArea    String?
+  urgency        String?
+  escalationId   String?
+  resolvedAt     DateTime?
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  workspace    Workspace     @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  contact      Contact?      @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  company      Company?      @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  deal         Deal?         @relation(fields: [dealId], references: [id], onDelete: Cascade)
+  conversation Conversation? @relation(fields: [conversationId], references: [id], onDelete: SetNull)
+  assignee     User?         @relation("TicketAssignee", fields: [assigneeId], references: [id], onDelete: SetNull)
+  escalation   Escalation?   @relation(fields: [escalationId], references: [id], onDelete: SetNull)
+  tasks        Task[]
+  activities   CrmActivity[]
+
+  @@index([workspaceId, status])
+  @@index([workspaceId, assigneeId])
+}
+
+// ============================================================================
+// Tags and Dynamic Custom Properties
+// ============================================================================
+
+model Tag {
+  id          String   @id @default(cuid())
+  workspaceId String
+  name        String
+  color       String   @default("#3b82f6")
+  createdAt   DateTime @default(now())
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, name])
+}
+
+model PropertyDefinition {
+  id           String       @id @default(cuid())
+  workspaceId  String
+  targetEntity String
+  name         String
+  key          String
+  type         PropertyType
+  options      String[]     @default([])
+  required     Boolean      @default(false)
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+
+  workspace Workspace       @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  values    PropertyValue[]
+
+  @@unique([workspaceId, targetEntity, key])
+}
+
+model PropertyValue {
+  id           String   @id @default(cuid())
+  definitionId String
+  contactId    String?
+  value        Json
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  definition PropertyDefinition @relation(fields: [definitionId], references: [id], onDelete: Cascade)
+  contact    Contact?           @relation(fields: [contactId], references: [id], onDelete: Cascade)
+
+  @@index([definitionId])
+  @@index([contactId])
+}
+
+// ============================================================================
+// Automation Engine
+// ============================================================================
+
+model AutomationRule {
+  id          String      @id @default(cuid())
+  workspaceId String
+  name        String
+  description String?
+  trigger     RuleTrigger
+  conditions  Json
+  actions     Json
+  active      Boolean     @default(true)
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId, trigger, active])
+}
+
+// ============================================================================
+// Durable Event System (Outbox & Background Worker)
+// ============================================================================
+
+model OutboxEvent {
+  id            String       @id @default(cuid())
+  workspaceId   String
+  eventType     String
+  payload       Json
+  status        OutboxStatus @default(PENDING)
+  attempts      Int          @default(0)
+  maxAttempts   Int          @default(5)
+  nextAttemptAt DateTime     @default(now())
+  lastError     String?
+  processedAt   DateTime?
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([status, nextAttemptAt])
+  @@index([workspaceId, createdAt])
+}
+
+model BackgroundJob {
+  id            String    @id @default(cuid())
+  workspaceId   String
+  jobType       String
+  payload       Json
+  status        JobStatus @default(QUEUED)
+  attemptCount  Int       @default(0)
+  maxAttempts   Int       @default(5)
+  nextAttemptAt DateTime  @default(now())
+  claimedAt     DateTime?
+  claimedBy     String?
+  lastError     String?
+  correlationId String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([status, nextAttemptAt])
+  @@index([workspaceId, createdAt])
+}
+
+model ConsentRecord {
+  id        String   @id @default(cuid())
+  contactId String
+  purpose   String
+  granted   Boolean  @default(true)
+  ipHash    String?
+  userAgent String?
+  createdAt DateTime @default(now())
+
+  contact Contact @relation(fields: [contactId], references: [id], onDelete: Cascade)
+
+  @@index([contactId])
 }
 
 // ============================================================================
@@ -227,7 +833,8 @@ model LoginAttempt {
 // ============================================================================
 
 model KnowledgeBase {
-  id              String     @id @default(cuid())
+  id          String     @id @default(cuid())
+  workspaceId String?
   name        String
   slug        String     @unique
   description String?
@@ -236,7 +843,8 @@ model KnowledgeBase {
   createdAt   DateTime   @default(now())
   updatedAt   DateTime   @updatedAt
 
-  owner              User?                  @relation(fields: [ownerId], references: [id], onDelete: SetNull)
+  workspace          Workspace?               @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  owner              User?                    @relation(fields: [ownerId], references: [id], onDelete: SetNull)
   documents          Document[]
   conversations      Conversation[]
   knowledgeGaps      KnowledgeGap[]
@@ -244,6 +852,7 @@ model KnowledgeBase {
   evaluations        Evaluation[]
 
   @@index([visibility])
+  @@index([workspaceId])
 }
 
 model Document {
@@ -255,7 +864,6 @@ model Document {
   mimeType         String?
   storagePath      String?
   sourceUrl        String?
-  /// SHA-256 of the raw source bytes. Drives duplicate detection.
   checksum         String
   status           DocumentStatus @default(UPLOADED)
   accessLevel      AccessLevel    @default(PUBLIC)
@@ -270,16 +878,16 @@ model Document {
   createdAt        DateTime       @default(now())
   updatedAt        DateTime       @updatedAt
 
-  knowledgeBase KnowledgeBase     @relation(fields: [knowledgeBaseId], references: [id], onDelete: Cascade)
-  uploader      User?             @relation("DocumentUploader", fields: [uploadedBy], references: [id], onDelete: SetNull)
-  versions      DocumentVersion[]
-  chunks        DocumentChunk[]
-  jobs          IngestionJob[]
-  citations     Citation[]
-  gapSuggestions     KnowledgeGapSuggestion[]
-  authoritativeConflicts KnowledgeConflict[] @relation("AuthoritativeConflictDoc")
-  supersededConflicts    KnowledgeConflict[] @relation("SupersededConflictDoc")
-  conflictDocs   KnowledgeConflictDoc[]
+  knowledgeBase          KnowledgeBase            @relation(fields: [knowledgeBaseId], references: [id], onDelete: Cascade)
+  uploader               User?                    @relation("DocumentUploader", fields: [uploadedBy], references: [id], onDelete: SetNull)
+  versions               DocumentVersion[]
+  chunks                 DocumentChunk[]
+  jobs                   IngestionJob[]
+  citations              Citation[]
+  gapSuggestions         KnowledgeGapSuggestion[]
+  authoritativeConflicts KnowledgeConflict[]       @relation("AuthoritativeConflictDoc")
+  supersededConflicts    KnowledgeConflict[]       @relation("SupersededConflictDoc")
+  conflictDocs           KnowledgeConflictDoc[]
 
   @@unique([knowledgeBaseId, checksum])
   @@index([status])
@@ -288,19 +896,18 @@ model Document {
 }
 
 model DocumentVersion {
-  id               String           @id @default(cuid())
-  documentId       String
-  version          Int
-  checksum         String
-  storagePath      String?
-  processingStatus ProcessingStatus @default(PENDING)
-  extractedText    String?
-  pageCount        Int?
-  /// Recorded so a provider or model change can be detected as index drift.
-  embeddingProvider String?
-  embeddingModel    String?
+  id                  String           @id @default(cuid())
+  documentId          String
+  version             Int
+  checksum            String
+  storagePath         String?
+  processingStatus    ProcessingStatus @default(PENDING)
+  extractedText       String?
+  pageCount           Int?
+  embeddingProvider   String?
+  embeddingModel      String?
   embeddingDimensions Int?
-  createdAt        DateTime         @default(now())
+  createdAt           DateTime         @default(now())
 
   document Document        @relation(fields: [documentId], references: [id], onDelete: Cascade)
   chunks   DocumentChunk[]
@@ -310,24 +917,22 @@ model DocumentVersion {
 }
 
 model DocumentChunk {
-  id                String  @id @default(cuid())
+  id                String                    @id @default(cuid())
   documentId        String
   documentVersionId String
   chunkIndex        Int
   content           String
-  tokenCount        Int     @default(0)
+  tokenCount        Int                       @default(0)
   pageNumber        Int?
   sectionTitle      String?
-  /// Denormalised from Document so the vector query can filter without a join.
   accessLevel       AccessLevel
   knowledgeBaseId   String
-  /// Lowercased term list backing the keyword half of hybrid search.
-  searchText        String  @default("")
+  searchText        String                    @default("")
   metadata          Json?
   embeddingProvider String?
   embeddingModel    String?
   embedding         Unsupported("vector(768)")?
-  createdAt         DateTime @default(now())
+  createdAt         DateTime                  @default(now())
 
   document        Document        @relation(fields: [documentId], references: [id], onDelete: Cascade)
   documentVersion DocumentVersion @relation(fields: [documentVersionId], references: [id], onDelete: Cascade)
@@ -345,22 +950,30 @@ model DocumentChunk {
 
 model Conversation {
   id              String             @id @default(cuid())
+  workspaceId     String?
   userId          String?
+  contactId       String?
   knowledgeBaseId String?
   title           String             @default("New conversation")
   status          ConversationStatus @default(ACTIVE)
-  /// Anonymous public-demo sessions are grouped by this instead of a user id.
   anonymousKey    String?
   createdAt       DateTime           @default(now())
   updatedAt       DateTime           @updatedAt
 
+  workspace     Workspace?     @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   user          User?          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  contact       Contact?       @relation(fields: [contactId], references: [id], onDelete: SetNull)
   knowledgeBase KnowledgeBase? @relation(fields: [knowledgeBaseId], references: [id], onDelete: SetNull)
   messages      Message[]
   escalations   Escalation[]
   retrievalLogs RetrievalLog[]
+  tasks         Task[]
+  tickets       Ticket[]
+  activities    CrmActivity[]
 
+  @@index([workspaceId, updatedAt])
   @@index([userId, updatedAt])
+  @@index([contactId, updatedAt])
   @@index([anonymousKey])
   @@index([status])
 }
@@ -375,7 +988,6 @@ model Message {
   modelProvider  String?
   modelName      String?
   latencyMs      Int?
-  /// Set when the prompt-injection detector flagged the source turn.
   flagged        Boolean         @default(false)
   createdAt      DateTime        @default(now())
 
@@ -442,6 +1054,7 @@ model Escalation {
   conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
   user         User?        @relation("EscalationRequester", fields: [userId], references: [id], onDelete: SetNull)
   assignee     User?        @relation("EscalationAssignee", fields: [assignedTo], references: [id], onDelete: SetNull)
+  tickets      Ticket[]
 
   @@index([status, priority])
   @@index([conversationId])
@@ -452,18 +1065,18 @@ model Escalation {
 // ============================================================================
 
 model IngestionJob {
-  id           String    @id @default(cuid())
-  documentId   String
-  status       JobStatus @default(QUEUED)
-  stage        JobStage  @default(VALIDATION)
-  progress     Int       @default(0)
-  attemptCount Int       @default(0)
-  lastError    String?
+  id            String    @id @default(cuid())
+  documentId    String
+  status        JobStatus @default(QUEUED)
+  stage         JobStage  @default(VALIDATION)
+  progress      Int       @default(0)
+  attemptCount  Int       @default(0)
+  lastError     String?
   correlationId String?
-  startedAt    DateTime?
-  completedAt  DateTime?
-  createdAt    DateTime  @default(now())
-  updatedAt    DateTime  @updatedAt
+  startedAt     DateTime?
+  completedAt   DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
 
   document Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
 
@@ -472,21 +1085,20 @@ model IngestionJob {
 }
 
 model RetrievalLog {
-  id                String   @id @default(cuid())
+  id                String          @id @default(cuid())
   conversationId    String?
   query             String
   rewrittenQuery    String?
-  /// Chunk ids only. Never chunk text, so the log cannot leak restricted content.
-  retrievedChunkIds String[] @default([])
-  rerankedChunkIds  String[] @default([])
-  candidateCount    Int      @default(0)
-  filteredCount     Int      @default(0)
-  confidence        Float    @default(0)
+  retrievedChunkIds String[]        @default([])
+  rerankedChunkIds  String[]        @default([])
+  candidateCount    Int             @default(0)
+  filteredCount     Int             @default(0)
+  confidence        Float           @default(0)
   grounding         GroundingLevel?
   accessLevel       AccessLevel
-  latencyMs         Int      @default(0)
+  latencyMs         Int             @default(0)
   traceId           String?
-  createdAt         DateTime @default(now())
+  createdAt         DateTime        @default(now())
 
   conversation Conversation? @relation(fields: [conversationId], references: [id], onDelete: Cascade)
 
@@ -528,7 +1140,6 @@ model Integration {
   type                  String
   name                  String
   status                IntegrationStatus @default(NOT_CONFIGURED)
-  /// Non-secret metadata only. API keys live in environment variables.
   configurationMetadata Json?
   lastCheckedAt         DateTime?
   createdAt             DateTime          @default(now())
@@ -542,77 +1153,63 @@ model Integration {
 // Knowledge Health
 // ============================================================================
 
-enum KnowledgeGapStatus {
-  OPEN
-  ACKNOWLEDGED
-  RESOLVED
-  IGNORED
-}
-
 model KnowledgeGap {
-  id                String              @id @default(cuid())
-  knowledgeBaseId   String
-  title             String
-  description       String?
-  status            KnowledgeGapStatus  @default(OPEN)
-  occurrenceCount   Int                 @default(1)
-  lastOccurredAt    DateTime            @default(now())
-  firstDetectedAt   DateTime            @default(now())
-  resolvedAt        DateTime?
-  resolutionNote    String?
-  knowledgeBase     KnowledgeBase       @relation(fields: [knowledgeBaseId], references: [id], onDelete: Cascade)
-  suggestedSources  KnowledgeGapSuggestion[]
+  id               String                   @id @default(cuid())
+  knowledgeBaseId  String
+  title            String
+  description      String?
+  status           KnowledgeGapStatus       @default(OPEN)
+  occurrenceCount  Int                      @default(1)
+  lastOccurredAt   DateTime                 @default(now())
+  firstDetectedAt  DateTime                 @default(now())
+  resolvedAt       DateTime?
+  resolutionNote   String?
+  knowledgeBase    KnowledgeBase            @relation(fields: [knowledgeBaseId], references: [id], onDelete: Cascade)
+  suggestedSources KnowledgeGapSuggestion[]
 
   @@index([knowledgeBaseId, status])
   @@index([status])
 }
 
 model KnowledgeGapSuggestion {
-  id              String        @id @default(cuid())
-  knowledgeGapId  String
-  documentId      String
-  relevanceNote   String?
-  knowledgeGap    KnowledgeGap  @relation(fields: [knowledgeGapId], references: [id], onDelete: Cascade)
-  document        Document      @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  id             String       @id @default(cuid())
+  knowledgeGapId String
+  documentId     String
+  relevanceNote  String?
+  knowledgeGap   KnowledgeGap @relation(fields: [knowledgeGapId], references: [id], onDelete: Cascade)
+  document       Document     @relation(fields: [documentId], references: [id], onDelete: Cascade)
 
   @@unique([knowledgeGapId, documentId])
 }
 
-enum KnowledgeConflictStatus {
-  OPEN
-  IN_REVIEW
-  RESOLVED
-  DISMISSED
-}
-
 model KnowledgeConflict {
-  id                String                  @id @default(cuid())
-  knowledgeBaseId   String
-  title             String
-  description       String?
-  status            KnowledgeConflictStatus @default(OPEN)
+  id                 String                  @id @default(cuid())
+  knowledgeBaseId    String
+  title              String
+  description        String?
+  status             KnowledgeConflictStatus @default(OPEN)
   authoritativeDocId String?
-  supersededDocId   String?
-  resolutionNote    String?
-  createdAt         DateTime                @default(now())
-  updatedAt         DateTime                @updatedAt
-  resolvedAt        DateTime?
-  knowledgeBase     KnowledgeBase           @relation(fields: [knowledgeBaseId], references: [id], onDelete: Cascade)
-  authoritativeDoc  Document?               @relation("AuthoritativeConflictDoc", fields: [authoritativeDocId], references: [id], onDelete: SetNull)
-  supersededDoc     Document?               @relation("SupersededConflictDoc", fields: [supersededDocId], references: [id], onDelete: SetNull)
-  conflictingDocs   KnowledgeConflictDoc[]
+  supersededDocId    String?
+  resolutionNote     String?
+  createdAt          DateTime                @default(now())
+  updatedAt          DateTime                @updatedAt
+  resolvedAt         DateTime?
+  knowledgeBase      KnowledgeBase           @relation(fields: [knowledgeBaseId], references: [id], onDelete: Cascade)
+  authoritativeDoc   Document?               @relation("AuthoritativeConflictDoc", fields: [authoritativeDocId], references: [id], onDelete: SetNull)
+  supersededDoc      Document?               @relation("SupersededConflictDoc", fields: [supersededDocId], references: [id], onDelete: SetNull)
+  conflictingDocs    KnowledgeConflictDoc[]
 
   @@index([knowledgeBaseId, status])
   @@index([status])
 }
 
 model KnowledgeConflictDoc {
-  id                String            @id @default(cuid())
+  id                  String            @id @default(cuid())
   knowledgeConflictId String
-  documentId        String
-  excerpt           String
-  knowledgeConflict KnowledgeConflict @relation(fields: [knowledgeConflictId], references: [id], onDelete: Cascade)
-  document          Document          @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  documentId          String
+  excerpt             String
+  knowledgeConflict   KnowledgeConflict @relation(fields: [knowledgeConflictId], references: [id], onDelete: Cascade)
+  document            Document          @relation(fields: [documentId], references: [id], onDelete: Cascade)
 
   @@unique([knowledgeConflictId, documentId])
 }
@@ -621,41 +1218,34 @@ model KnowledgeConflictDoc {
 // Evaluations
 // ============================================================================
 
-enum EvaluationRunStatus {
-  PENDING
-  RUNNING
-  COMPLETED
-  FAILED
-}
-
 model Evaluation {
-  id              String            @id @default(cuid())
+  id              String   @id @default(cuid())
   knowledgeBaseId String
   name            String
   description     String?
   testCases       Json
-  createdAt       DateTime          @default(now())
-  updatedAt       DateTime          @updatedAt
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
 
-  knowledgeBase   KnowledgeBase     @relation(fields: [knowledgeBaseId], references: [id], onDelete: Cascade)
-  runs            EvaluationRun[]
+  knowledgeBase KnowledgeBase   @relation(fields: [knowledgeBaseId], references: [id], onDelete: Cascade)
+  runs          EvaluationRun[]
 
   @@index([knowledgeBaseId])
 }
 
 model EvaluationRun {
-  id              String              @id @default(cuid())
-  evaluationId    String
-  status          EvaluationRunStatus @default(PENDING)
-  total           Int                 @default(0)
-  passed          Int                 @default(0)
-  failed          Int                 @default(0)
-  error           String?
-  durationMs      Int?
-  createdAt       DateTime            @default(now())
-  completedAt     DateTime?
+  id           String              @id @default(cuid())
+  evaluationId String
+  status       EvaluationRunStatus @default(PENDING)
+  total        Int                 @default(0)
+  passed       Int                 @default(0)
+  failed       Int                 @default(0)
+  error        String?
+  durationMs   Int?
+  createdAt    DateTime            @default(now())
+  completedAt  DateTime?
 
-  evaluation      Evaluation          @relation(fields: [evaluationId], references: [id], onDelete: Cascade)
+  evaluation Evaluation @relation(fields: [evaluationId], references: [id], onDelete: Cascade)
 
   @@index([evaluationId])
   @@index([status])

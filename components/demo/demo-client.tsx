@@ -111,7 +111,7 @@ export function DemoClient({ demoMode }: { demoMode: boolean }) {
             />
             <div className="flex flex-wrap gap-2">
               {ROLE_CARDS.map((r) => (
-                <Badge key={r.role} tone={r.color as any} title={r.reach}>
+                <Badge key={r.role} tone={r.color} title={r.reach}>
                   {r.label}
                 </Badge>
               ))}
