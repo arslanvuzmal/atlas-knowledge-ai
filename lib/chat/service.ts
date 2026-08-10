@@ -358,10 +358,16 @@ export async function ask(input: AskInput): Promise<AskOutput> {
         name: extractedName,
       });
 
-      await prisma.conversation.update({
-        where: { id: conversationId },
-        data: { contactId: contact.id, workspaceId, updatedAt: new Date() },
-      });
+      try {
+        await prisma.conversation.update({
+          where: { id: conversationId },
+          data: { contactId: contact.id, updatedAt: new Date() },
+        });
+      } catch (convErr) {
+        log.warn('Conversation contact update skipped (non-blocking)', {
+          error: convErr instanceof Error ? convErr.message : String(convErr),
+        });
+      }
 
       await enqueueOutboxEvent({
         workspaceId,
