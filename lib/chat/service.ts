@@ -261,10 +261,21 @@ export async function ask(input: AskInput): Promise<AskOutput> {
     });
   }
 
-  await prisma.conversation.update({
-    where: { id: conversationId },
-    data: { updatedAt: new Date() },
-  });
+  try {
+    await prisma.conversation.update({
+      where: { id: conversationId },
+      data: { updatedAt: new Date() },
+    });
+  } catch {
+    try {
+      await prisma.$executeRawUnsafe(
+        'UPDATE "Conversation" SET "updatedAt" = NOW() WHERE id = $1',
+        conversationId,
+      );
+    } catch {
+      // Ignore if table/field fails
+    }
+  }
 
   // --- Automatic escalation --------------------------------------------------
   let escalationId: string | null = null;
@@ -287,10 +298,21 @@ export async function ask(input: AskInput): Promise<AskOutput> {
     });
     escalationId = escalation.id;
 
-    await prisma.conversation.update({
-      where: { id: conversationId },
-      data: { status: 'ESCALATED' },
-    });
+    try {
+      await prisma.conversation.update({
+        where: { id: conversationId },
+        data: { status: 'ESCALATED' },
+      });
+    } catch {
+      try {
+        await prisma.$executeRawUnsafe(
+          'UPDATE "Conversation" SET "status" = \'ESCALATED\'::"ConversationStatus", "updatedAt" = NOW() WHERE id = $1',
+          conversationId,
+        );
+      } catch {
+        // Ignore if status update fails
+      }
+    }
 
     await recordAudit({
       action: 'escalation.create',
@@ -365,9 +387,17 @@ export async function ask(input: AskInput): Promise<AskOutput> {
           data: { contactId: contact.id, updatedAt: new Date() },
         });
       } catch (convErr) {
-        log.warn('Conversation contact update skipped (non-blocking)', {
-          error: convErr instanceof Error ? convErr.message : String(convErr),
-        });
+        try {
+          await prisma.$executeRawUnsafe(
+            'UPDATE "Conversation" SET "contactId" = $1, "updatedAt" = NOW() WHERE id = $2',
+            contact.id,
+            conversationId,
+          );
+        } catch {
+          log.warn('Conversation contact update skipped (non-blocking)', {
+            error: convErr instanceof Error ? convErr.message : String(convErr),
+          });
+        }
       }
 
       await enqueueOutboxEvent({

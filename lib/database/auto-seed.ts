@@ -7,10 +7,12 @@ let schemaPatched = false;
 export async function ensureDatabaseSchemaPatched(): Promise<void> {
   if (schemaPatched) return;
   try {
-    await prisma.$executeRawUnsafe(`
-      ALTER TABLE "Conversation" ADD COLUMN IF NOT EXISTS "workspaceId" TEXT;
-      ALTER TABLE "Conversation" ADD COLUMN IF NOT EXISTS "contactId" TEXT;
-    `);
+    await prisma.$executeRawUnsafe(
+      'ALTER TABLE "Conversation" ADD COLUMN IF NOT EXISTS "workspaceId" TEXT',
+    );
+    await prisma.$executeRawUnsafe(
+      'ALTER TABLE "Conversation" ADD COLUMN IF NOT EXISTS "contactId" TEXT',
+    );
     schemaPatched = true;
   } catch (err) {
     logger.warn('Database schema auto-patch warning', { error: err });
