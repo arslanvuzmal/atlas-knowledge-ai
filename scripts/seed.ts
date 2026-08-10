@@ -1,5 +1,5 @@
 import 'dotenv/config';
-import { readFile, readdir } from 'node:fs/promises';
+import { readFile, readdir, stat } from 'node:fs/promises';
 import path from 'node:path';
 import type { AccessLevel, Role } from '@prisma/client';
 import { prisma } from '@/lib/database/client';
@@ -207,12 +207,54 @@ async function seedCrm(workspaceId: string, users: Map<string, { id: string; rol
 
   // 1. Companies
   const companySpecs = [
-    { name: 'Acme Labs', domain: 'acme.example', industry: 'Cloud & AI', employeeRange: '50-200', country: 'United States', lifecycle: 'QUALIFIED_LEAD' as const },
-    { name: 'Apex Dynamics', domain: 'apexdynamics.example', industry: 'Fintech', employeeRange: '200-500', country: 'United Kingdom', lifecycle: 'CUSTOMER' as const },
-    { name: 'Horizon Health', domain: 'horizonhealth.example', industry: 'Healthcare', employeeRange: '500-1000', country: 'United States', lifecycle: 'OPPORTUNITY' as const },
-    { name: 'Nexus Retail', domain: 'nexusretail.example', industry: 'E-commerce', employeeRange: '100-250', country: 'Germany', lifecycle: 'LEAD' as const },
-    { name: 'Stellar Financial', domain: 'stellarfin.example', industry: 'Banking', employeeRange: '1000+', country: 'Singapore', lifecycle: 'CUSTOMER' as const },
-    { name: 'CyberShield Systems', domain: 'cybershield.example', industry: 'Cybersecurity', employeeRange: '50-100', country: 'Canada', lifecycle: 'QUALIFIED_LEAD' as const },
+    {
+      name: 'Acme Labs',
+      domain: 'acme.example',
+      industry: 'Cloud & AI',
+      employeeRange: '50-200',
+      country: 'United States',
+      lifecycle: 'QUALIFIED_LEAD' as const,
+    },
+    {
+      name: 'Apex Dynamics',
+      domain: 'apexdynamics.example',
+      industry: 'Fintech',
+      employeeRange: '200-500',
+      country: 'United Kingdom',
+      lifecycle: 'CUSTOMER' as const,
+    },
+    {
+      name: 'Horizon Health',
+      domain: 'horizonhealth.example',
+      industry: 'Healthcare',
+      employeeRange: '500-1000',
+      country: 'United States',
+      lifecycle: 'OPPORTUNITY' as const,
+    },
+    {
+      name: 'Nexus Retail',
+      domain: 'nexusretail.example',
+      industry: 'E-commerce',
+      employeeRange: '100-250',
+      country: 'Germany',
+      lifecycle: 'LEAD' as const,
+    },
+    {
+      name: 'Stellar Financial',
+      domain: 'stellarfin.example',
+      industry: 'Banking',
+      employeeRange: '1000+',
+      country: 'Singapore',
+      lifecycle: 'CUSTOMER' as const,
+    },
+    {
+      name: 'CyberShield Systems',
+      domain: 'cybershield.example',
+      industry: 'Cybersecurity',
+      employeeRange: '50-100',
+      country: 'Canada',
+      lifecycle: 'QUALIFIED_LEAD' as const,
+    },
   ];
 
   const companyMap = new Map<string, string>();
@@ -298,7 +340,12 @@ async function seedCrm(workspaceId: string, users: Map<string, { id: string; rol
       requestedFollowUp: true,
       timeline: 'next month',
       seatRequirement: 80,
-      explicitRequirements: ['SAML SSO', 'Role-based sensitivity filters', 'SOC2 Compliance', '30-day refund guarantee'],
+      explicitRequirements: [
+        'SAML SSO',
+        'Role-based sensitivity filters',
+        'SOC2 Compliance',
+        '30-day refund guarantee',
+      ],
       recommendedNextAction: 'Schedule technical demo call with Acme Labs engineering team',
       confidence: 0.92,
       provenance: 'DERIVED',
@@ -312,12 +359,54 @@ async function seedCrm(workspaceId: string, users: Map<string, { id: string; rol
   });
 
   const additionalContacts = [
-    { firstName: 'Alex', lastName: 'Vance', email: 'alex.vance@apexdynamics.example', companyId: apexId, stage: 'CUSTOMER' as const, score: 90 },
-    { firstName: 'Elena', lastName: 'Rostova', email: 'elena.rostova@horizonhealth.example', companyId: horizonId, stage: 'OPPORTUNITY' as const, score: 68 },
-    { firstName: 'Marcus', lastName: 'Thorne', email: 'marcus.t@nexusretail.example', companyId: nexusId, stage: 'LEAD' as const, score: 42 },
-    { firstName: 'Sarah', lastName: 'Jenkins', email: 'sarah.j@acme.example', companyId: acmeId, stage: 'QUALIFIED_LEAD' as const, score: 65 },
-    { firstName: 'David', lastName: 'Kim', email: 'david.kim@stellarfin.example', companyId: companyMap.get('Stellar Financial'), stage: 'CUSTOMER' as const, score: 85 },
-    { firstName: 'Priya', lastName: 'Patel', email: 'p.patel@cybershield.example', companyId: companyMap.get('CyberShield Systems'), stage: 'QUALIFIED_LEAD' as const, score: 71 },
+    {
+      firstName: 'Alex',
+      lastName: 'Vance',
+      email: 'alex.vance@apexdynamics.example',
+      companyId: apexId,
+      stage: 'CUSTOMER' as const,
+      score: 90,
+    },
+    {
+      firstName: 'Elena',
+      lastName: 'Rostova',
+      email: 'elena.rostova@horizonhealth.example',
+      companyId: horizonId,
+      stage: 'OPPORTUNITY' as const,
+      score: 68,
+    },
+    {
+      firstName: 'Marcus',
+      lastName: 'Thorne',
+      email: 'marcus.t@nexusretail.example',
+      companyId: nexusId,
+      stage: 'LEAD' as const,
+      score: 42,
+    },
+    {
+      firstName: 'Sarah',
+      lastName: 'Jenkins',
+      email: 'sarah.j@acme.example',
+      companyId: acmeId,
+      stage: 'QUALIFIED_LEAD' as const,
+      score: 65,
+    },
+    {
+      firstName: 'David',
+      lastName: 'Kim',
+      email: 'david.kim@stellarfin.example',
+      companyId: companyMap.get('Stellar Financial'),
+      stage: 'CUSTOMER' as const,
+      score: 85,
+    },
+    {
+      firstName: 'Priya',
+      lastName: 'Patel',
+      email: 'p.patel@cybershield.example',
+      companyId: companyMap.get('CyberShield Systems'),
+      stage: 'QUALIFIED_LEAD' as const,
+      score: 71,
+    },
   ];
 
   for (const c of additionalContacts) {
@@ -470,7 +559,12 @@ async function seedCrm(workspaceId: string, users: Map<string, { id: string; rol
       description: 'Automatically notify assigned account owner when lead score reaches 70+',
       trigger: 'LEAD_SCORE_CHANGED',
       conditions: [{ field: 'leadScore', operator: 'gte', value: 70 }],
-      actions: [{ type: 'CREATE_TASK', params: { title: 'Follow up with qualified high-scoring prospect' } }],
+      actions: [
+        {
+          type: 'CREATE_TASK',
+          params: { title: 'Follow up with qualified high-scoring prospect' },
+        },
+      ],
       active: true,
     },
   });
@@ -487,7 +581,9 @@ async function seedCrm(workspaceId: string, users: Map<string, { id: string; rol
     },
   });
 
-  console.log('  crm: companies, contacts, Maya Chen intelligence, pipeline, deals, tasks, tickets & automation rules ready');
+  console.log(
+    '  crm: companies, contacts, Maya Chen intelligence, pipeline, deals, tasks, tickets & automation rules ready',
+  );
 }
 
 const SEED_TURNS: {
@@ -555,7 +651,9 @@ const SEED_TURNS: {
 ];
 
 async function seedDocuments(knowledgeBaseId: string, adminUserId: string): Promise<void> {
-  const sampleDir = path.join(process.cwd(), 'sample-data', 'documents');
+  const docsDir = path.join(process.cwd(), 'sample-data', 'documents');
+  const northstarDir = path.join(process.cwd(), 'sample-data', 'northstar');
+  const sampleDir = (await stat(docsDir).catch(() => null)) ? docsDir : northstarDir;
   const files = (await readdir(sampleDir)).filter((f) => f.endsWith('.md')).sort();
 
   for (const filename of files) {
@@ -577,7 +675,9 @@ async function seedDocuments(knowledgeBaseId: string, adminUserId: string): Prom
       mimeType: 'text/markdown',
     });
 
-    console.log(`  ingested: "${spec.title}" (${result.chunkCount} chunks, access=${spec.accessLevel})`);
+    console.log(
+      `  ingested: "${spec.title}" (${result.chunkCount} chunks, access=${spec.accessLevel})`,
+    );
   }
 }
 
@@ -603,7 +703,10 @@ async function seedConversations(
       role: spec.role,
     });
 
-    if (result.answer.grounding === 'SUPPORTED' || result.answer.grounding === 'PARTIALLY_SUPPORTED') {
+    if (
+      result.answer.grounding === 'SUPPORTED' ||
+      result.answer.grounding === 'PARTIALLY_SUPPORTED'
+    ) {
       supported++;
     } else {
       unsupported++;
@@ -694,13 +797,14 @@ async function main() {
   });
   console.log(`  knowledge base: "${knowledgeBase.name}" ready`);
 
-  const existingDocuments = await prisma.document.count({
-    where: { knowledgeBaseId: knowledgeBase.id },
+  const existingIndexedDocuments = await prisma.document.count({
+    where: { knowledgeBaseId: knowledgeBase.id, status: 'INDEXED' },
   });
 
-  if (existingDocuments > 0) {
-    console.log(`  documents: ${existingDocuments} already present, skipping ingestion`);
+  if (existingIndexedDocuments > 0) {
+    console.log(`  documents: ${existingIndexedDocuments} indexed documents ready`);
   } else {
+    await prisma.document.deleteMany({ where: { knowledgeBaseId: knowledgeBase.id } });
     await seedDocuments(knowledgeBase.id, admin.id);
   }
 

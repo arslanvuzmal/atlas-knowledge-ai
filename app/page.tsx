@@ -52,7 +52,9 @@ export default async function HomePage() {
                 <span className="text-teal">See the evidence.</span>
               </h1>
               <p className="text-sm sm:text-base leading-relaxed text-ink-muted max-w-xl">
-                Atlas turns approved documents, policies, manuals and websites into a searchable knowledge system where every answer can be traced directly back to its verified source.
+                Atlas turns approved documents, policies, manuals and websites into a searchable
+                knowledge system where every answer can be traced directly back to its verified
+                source.
               </p>
 
               <div className="flex flex-wrap gap-3 pt-2">
@@ -73,16 +75,28 @@ export default async function HomePage() {
               {/* Provenance Stat Line */}
               <div className="pt-6 border-t border-edge grid grid-cols-3 gap-4 font-mono text-[11px]">
                 <div>
-                  <div className="text-lg font-bold text-ink tabular-nums">{formatNumber(documents)}</div>
-                  <div className="text-ink-faint text-[10px] uppercase tracking-wider">Indexed Documents</div>
+                  <div className="text-lg font-bold text-ink tabular-nums">
+                    {formatNumber(documents)}
+                  </div>
+                  <div className="text-ink-faint text-[10px] uppercase tracking-wider">
+                    Indexed Documents
+                  </div>
                 </div>
                 <div>
-                  <div className="text-lg font-bold text-ink tabular-nums">{formatNumber(chunks)}</div>
-                  <div className="text-ink-faint text-[10px] uppercase tracking-wider">Retrievable Passages</div>
+                  <div className="text-lg font-bold text-ink tabular-nums">
+                    {formatNumber(chunks)}
+                  </div>
+                  <div className="text-ink-faint text-[10px] uppercase tracking-wider">
+                    Retrievable Passages
+                  </div>
                 </div>
                 <div>
-                  <div className="text-lg font-bold text-ink tabular-nums">{formatNumber(questions)}</div>
-                  <div className="text-ink-faint text-[10px] uppercase tracking-wider">Answered Queries</div>
+                  <div className="text-lg font-bold text-ink tabular-nums">
+                    {formatNumber(questions)}
+                  </div>
+                  <div className="text-ink-faint text-[10px] uppercase tracking-wider">
+                    Answered Queries
+                  </div>
                 </div>
               </div>
             </div>
@@ -93,7 +107,9 @@ export default async function HomePage() {
                 <div className="flex items-center justify-between border-b border-edge pb-3">
                   <div className="flex items-center gap-2">
                     <span className="h-2 w-2 rounded-full bg-teal animate-pulse" />
-                    <span className="text-[11px] font-bold text-ink uppercase tracking-wider">EVIDENCE_INTERACTION // LIVE_DEMO</span>
+                    <span className="text-[11px] font-bold text-ink uppercase tracking-wider">
+                      EVIDENCE_INTERACTION // LIVE_DEMO
+                    </span>
                   </div>
                   <span className="text-[10px] text-teal font-semibold border border-teal/30 bg-teal-wash px-2 py-0.5 rounded">
                     SUPPORTED (0.92)
@@ -102,8 +118,12 @@ export default async function HomePage() {
 
                 {/* Question */}
                 <div className="p-3 bg-canvas-sunken rounded border border-edge space-y-1">
-                  <span className="text-[10px] font-bold uppercase tracking-wider text-ink-faint">USER QUESTION</span>
-                  <p className="text-xs text-ink font-sans">How long can an employee carry unused annual leave?</p>
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-ink-faint">
+                    USER QUESTION
+                  </span>
+                  <p className="text-xs text-ink font-sans">
+                    How long can an employee carry unused annual leave?
+                  </p>
                 </div>
 
                 {/* Answer with Citation */}
@@ -113,7 +133,11 @@ export default async function HomePage() {
                     <span>CONFIDENCE: HIGH</span>
                   </div>
                   <p className="text-xs text-ink leading-relaxed font-sans">
-                    Unused annual leave may be carried forward up to 5 consecutive working days into the next calendar year, subject to manager approval prior to December 15. <span className="font-mono text-teal font-bold hover:underline cursor-pointer">[1]</span>
+                    Unused annual leave may be carried forward up to 5 consecutive working days into
+                    the next calendar year, subject to manager approval prior to December 15.{' '}
+                    <span className="font-mono text-teal font-bold hover:underline cursor-pointer">
+                      [1]
+                    </span>
                   </p>
                 </div>
 
@@ -124,9 +148,12 @@ export default async function HomePage() {
                     <span>PAGE 42 // EMPLOYEE</span>
                   </div>
                   <div className="p-3 bg-canvas-sunken rounded border border-teal/40 space-y-1 font-sans text-xs text-ink-muted">
-                    <div className="font-mono text-[10px] text-ink font-bold">Employee Handbook — Section 4.2 Leave Policy</div>
+                    <div className="font-mono text-[10px] text-ink font-bold">
+                      Employee Handbook — Section 4.2 Leave Policy
+                    </div>
                     <p className="text-[11px] italic text-ink-muted">
-                      &ldquo;Employees may carry forward a maximum of 5 days of accrued unused annual leave into the subsequent year with written approval...&rdquo;
+                      &ldquo;Employees may carry forward a maximum of 5 days of accrued unused
+                      annual leave into the subsequent year with written approval...&rdquo;
                     </p>
                   </div>
                 </div>
@@ -139,22 +166,29 @@ export default async function HomePage() {
         <section className="border-b border-edge bg-canvas-sunken py-16">
           <div className="mx-auto max-w-6xl px-6 space-y-8">
             <div className="max-w-2xl">
-              <span className="font-mono text-xs font-bold text-rust uppercase tracking-wider block mb-1">01 // THE KNOWLEDGE PARADOX</span>
+              <span className="font-mono text-xs font-bold text-rust uppercase tracking-wider block mb-1">
+                01 // THE KNOWLEDGE PARADOX
+              </span>
               <h2 className="text-2xl sm:text-3xl font-bold tracking-tight text-ink">
                 Your company already has the answers. <br />
                 Finding the right one is the problem.
               </h2>
               <p className="mt-3 text-xs sm:text-sm text-ink-muted leading-relaxed">
-                Policies live in PDFs, procedures in drive folders, rules in wikis, and answers in employees&apos; heads. Traditional search finds documents; generic AI invents answers. Atlas sits precisely between them.
+                Policies live in PDFs, procedures in drive folders, rules in wikis, and answers in
+                employees&apos; heads. Traditional search finds documents; generic AI invents
+                answers. Atlas sits precisely between them.
               </p>
             </div>
 
             <div className="grid gap-4 sm:grid-cols-3">
               <div className="panel p-5 space-y-2 border-edge">
-                <span className="font-mono text-xs font-bold text-ink-faint">TRADITIONAL SEARCH</span>
+                <span className="font-mono text-xs font-bold text-ink-faint">
+                  TRADITIONAL SEARCH
+                </span>
                 <h3 className="text-sm font-semibold text-ink">Finds Documents</h3>
                 <p className="text-xs text-ink-muted leading-relaxed">
-                  Returns 40-page PDFs and forces team members to scan through dozens of pages to locate a single rule.
+                  Returns 40-page PDFs and forces team members to scan through dozens of pages to
+                  locate a single rule.
                 </p>
               </div>
 
@@ -162,7 +196,8 @@ export default async function HomePage() {
                 <span className="font-mono text-xs font-bold text-rust">GENERIC CHATBOTS</span>
                 <h3 className="text-sm font-semibold text-ink">Invents Answers</h3>
                 <p className="text-xs text-ink-muted leading-relaxed">
-                  Hallucinates plausible-sounding policies when sources are missing, creating business risk and compliance failures.
+                  Hallucinates plausible-sounding policies when sources are missing, creating
+                  business risk and compliance failures.
                 </p>
               </div>
 
@@ -170,7 +205,8 @@ export default async function HomePage() {
                 <span className="font-mono text-xs font-bold text-teal">ATLAS KNOWLEDGE AI</span>
                 <h3 className="text-sm font-semibold text-ink">Grounded &amp; Traceable</h3>
                 <p className="text-xs text-ink-muted leading-relaxed">
-                  Extracts exact answers from authorized sources, attaches proof citations, and refuses to guess when evidence is missing.
+                  Extracts exact answers from authorized sources, attaches proof citations, and
+                  refuses to guess when evidence is missing.
                 </p>
               </div>
             </div>
@@ -181,8 +217,12 @@ export default async function HomePage() {
         <section className="border-b border-edge py-16">
           <div className="mx-auto max-w-6xl px-6 space-y-12">
             <div className="border-b border-edge pb-4">
-              <span className="font-mono text-xs font-bold text-accent uppercase tracking-wider block mb-1">02 // CORE DIFFERENTIATORS</span>
-              <h2 className="text-2xl sm:text-3xl font-bold tracking-tight text-ink">Built for Trust and Verification</h2>
+              <span className="font-mono text-xs font-bold text-accent uppercase tracking-wider block mb-1">
+                02 // CORE DIFFERENTIATORS
+              </span>
+              <h2 className="text-2xl sm:text-3xl font-bold tracking-tight text-ink">
+                Built for Trust and Verification
+              </h2>
             </div>
 
             <div className="grid gap-8 sm:grid-cols-2 lg:grid-cols-4">
@@ -190,7 +230,8 @@ export default async function HomePage() {
                 <span className="font-mono text-xs font-bold text-accent">01 // EVIDENCE</span>
                 <h3 className="text-sm font-semibold text-ink">Answers with Evidence</h3>
                 <p className="text-xs text-ink-muted leading-relaxed">
-                  Every claim links to its exact source, section, and page number with matched passage excerpts.
+                  Every claim links to its exact source, section, and page number with matched
+                  passage excerpts.
                 </p>
               </div>
 
@@ -198,15 +239,19 @@ export default async function HomePage() {
                 <span className="font-mono text-xs font-bold text-indigo">02 // ACCESS LADDER</span>
                 <h3 className="text-sm font-semibold text-ink">Role-Based Access</h3>
                 <p className="text-xs text-ink-muted leading-relaxed">
-                  Strict authorization ladder (Public &rarr; Customer &rarr; Employee &rarr; Manager &rarr; Admin) enforced in database queries.
+                  Strict authorization ladder (Public &rarr; Customer &rarr; Employee &rarr; Manager
+                  &rarr; Admin) enforced in database queries.
                 </p>
               </div>
 
               <div className="space-y-3">
-                <span className="font-mono text-xs font-bold text-amber">03 // EPISTEMIC STATES</span>
+                <span className="font-mono text-xs font-bold text-amber">
+                  03 // EPISTEMIC STATES
+                </span>
                 <h3 className="text-sm font-semibold text-ink">Knows When It Doesn&apos;t Know</h3>
                 <p className="text-xs text-ink-muted leading-relaxed">
-                  Classifies outputs cleanly into Supported, Partial, or Unsupported without anthropomorphic excuses.
+                  Classifies outputs cleanly into Supported, Partial, or Unsupported without
+                  anthropomorphic excuses.
                 </p>
               </div>
 
@@ -214,7 +259,8 @@ export default async function HomePage() {
                 <span className="font-mono text-xs font-bold text-teal">04 // KNOWLEDGE GAPS</span>
                 <h3 className="text-sm font-semibold text-ink">Knowledge Gaps Visible</h3>
                 <p className="text-xs text-ink-muted leading-relaxed">
-                  Identifies repeated unanswered questions and surfaces them to administrators for content creation.
+                  Identifies repeated unanswered questions and surfaces them to administrators for
+                  content creation.
                 </p>
               </div>
             </div>
@@ -225,8 +271,12 @@ export default async function HomePage() {
         <section className="border-b border-edge bg-canvas-sunken py-16">
           <div className="mx-auto max-w-6xl px-6 space-y-8">
             <div className="border-b border-edge pb-4">
-              <span className="font-mono text-xs font-bold text-olive uppercase tracking-wider block mb-1">03 // SYSTEM TOPOLOGY</span>
-              <h2 className="text-2xl sm:text-3xl font-bold tracking-tight text-ink">The Atlas Retrieval &amp; Grounding Pipeline</h2>
+              <span className="font-mono text-xs font-bold text-olive uppercase tracking-wider block mb-1">
+                03 // SYSTEM TOPOLOGY
+              </span>
+              <h2 className="text-2xl sm:text-3xl font-bold tracking-tight text-ink">
+                The Atlas Retrieval &amp; Grounding Pipeline
+              </h2>
             </div>
 
             <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-2 font-mono text-xs text-center">
@@ -240,7 +290,10 @@ export default async function HomePage() {
                 { step: '07', name: 'EVIDENCE', detail: 'Passage Match' },
                 { step: '08', name: 'ANSWER', detail: 'Cited Output' },
               ].map((item) => (
-                <div key={item.step} className="p-3 bg-canvas-raised rounded border border-edge space-y-1">
+                <div
+                  key={item.step}
+                  className="p-3 bg-canvas-raised rounded border border-edge space-y-1"
+                >
                   <span className="text-[10px] text-accent font-bold block">{item.step}</span>
                   <div className="font-bold text-ink text-[11px] truncate">{item.name}</div>
                   <div className="text-[9px] text-ink-faint truncate">{item.detail}</div>

@@ -53,7 +53,11 @@ export function InboxWorkspace({ conversations }: { conversations: InboxConversa
     if (composerMode === 'note') {
       setNotes((prev) => [
         ...prev,
-        { id: `note_${Date.now()}`, content: replyText, createdAt: new Date().toLocaleTimeString() },
+        {
+          id: `note_${Date.now()}`,
+          content: replyText,
+          createdAt: new Date().toLocaleTimeString(),
+        },
       ]);
     } else {
       if (selected) {
@@ -72,9 +76,13 @@ export function InboxWorkspace({ conversations }: { conversations: InboxConversa
     if (type === 'shorten') {
       setReplyText((prev) => (prev ? prev.slice(0, Math.floor(prev.length * 0.6)) + '…' : ''));
     } else if (type === 'clarify') {
-      setReplyText("Thank you for reaching out! To help us tailor the Team plan for your 80 users, could you confirm if you require SAML SSO integration?");
+      setReplyText(
+        'Thank you for reaching out! To help us tailor the Team plan for your 80 users, could you confirm if you require SAML SSO integration?',
+      );
     } else if (type === 'find') {
-      setReplyText("Based on approved Northstar Cloud documentation: Annual subscriptions include a 30-day money-back guarantee, while monthly subscriptions allow 14-day refund windows.");
+      setReplyText(
+        'Based on approved Northstar Cloud documentation: Annual subscriptions include a 30-day money-back guarantee, while monthly subscriptions allow 14-day refund windows.',
+      );
     }
   };
 
@@ -89,9 +97,15 @@ export function InboxWorkspace({ conversations }: { conversations: InboxConversa
             className="w-full px-3 py-1.5 text-xs rounded border border-edge bg-canvas text-ink focus:outline-none focus:border-accent"
           />
           <div className="flex gap-2 mt-2">
-            <span className="text-[11px] font-medium text-accent cursor-pointer">All ({conversations.length})</span>
-            <span className="text-[11px] text-ink-faint cursor-pointer hover:text-ink">Needs Human</span>
-            <span className="text-[11px] text-ink-faint cursor-pointer hover:text-ink">High Intent</span>
+            <span className="text-[11px] font-medium text-accent cursor-pointer">
+              All ({conversations.length})
+            </span>
+            <span className="text-[11px] text-ink-faint cursor-pointer hover:text-ink">
+              Needs Human
+            </span>
+            <span className="text-[11px] text-ink-faint cursor-pointer hover:text-ink">
+              High Intent
+            </span>
           </div>
         </div>
 
@@ -104,7 +118,9 @@ export function InboxWorkspace({ conversations }: { conversations: InboxConversa
                 key={c.id}
                 onClick={() => setSelectedId(c.id)}
                 className={`w-full text-left p-3.5 transition-colors ${
-                  isSelected ? 'bg-canvas-overlay border-l-2 border-accent' : 'hover:bg-canvas-sunken'
+                  isSelected
+                    ? 'bg-canvas-overlay border-l-2 border-accent'
+                    : 'hover:bg-canvas-sunken'
                 }`}
               >
                 <div className="flex items-center justify-between gap-2 mb-1">
@@ -112,7 +128,10 @@ export function InboxWorkspace({ conversations }: { conversations: InboxConversa
                     {c.contact?.displayName || 'Anonymous Visitor'}
                   </span>
                   <span className="text-[10px] text-ink-faint shrink-0">
-                    {new Date(c.updatedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                    {new Date(c.updatedAt).toLocaleTimeString([], {
+                      hour: '2-digit',
+                      minute: '2-digit',
+                    })}
                   </span>
                 </div>
 
@@ -147,14 +166,21 @@ export function InboxWorkspace({ conversations }: { conversations: InboxConversa
                 <h2 className="text-sm font-semibold text-ink flex items-center gap-2">
                   {contact?.displayName || 'Anonymous Visitor'}
                   {contact?.company?.name ? (
-                    <span className="text-xs font-normal text-ink-muted">at {contact.company.name}</span>
+                    <span className="text-xs font-normal text-ink-muted">
+                      at {contact.company.name}
+                    </span>
                   ) : null}
                 </h2>
-                <p className="text-[11px] text-ink-faint">{contact?.primaryEmail || 'Session: ' + selected.id}</p>
+                <p className="text-[11px] text-ink-faint">
+                  {contact?.primaryEmail || 'Session: ' + selected.id}
+                </p>
               </div>
 
               <div className="flex items-center gap-2">
-                <StatusDot tone={selected.status === 'ACTIVE' ? 'good' : 'warning'} label={selected.status} />
+                <StatusDot
+                  tone={selected.status === 'ACTIVE' ? 'good' : 'warning'}
+                  label={selected.status}
+                />
               </div>
             </div>
 
@@ -179,7 +205,8 @@ export function InboxWorkspace({ conversations }: { conversations: InboxConversa
 
                     {m.citations && m.citations.length > 0 ? (
                       <div className="mt-2 pt-2 border-t border-edge-subtle text-[10px] text-ink-faint">
-                        <span className="font-medium">Sources:</span> {m.citations.map((c) => c.excerpt.slice(0, 50) + '...').join(' | ')}
+                        <span className="font-medium">Sources:</span>{' '}
+                        {m.citations.map((c) => c.excerpt.slice(0, 50) + '...').join(' | ')}
                       </div>
                     ) : null}
                   </div>
@@ -187,8 +214,14 @@ export function InboxWorkspace({ conversations }: { conversations: InboxConversa
               ))}
 
               {notes.map((n) => (
-                <div key={n.id} className="p-2.5 rounded bg-status-warning/10 border border-status-warning/30 text-xs text-ink">
-                  <span className="font-semibold text-status-warning text-[10px]">Internal Note:</span> {n.content}
+                <div
+                  key={n.id}
+                  className="p-2.5 rounded bg-status-warning/10 border border-status-warning/30 text-xs text-ink"
+                >
+                  <span className="font-semibold text-status-warning text-[10px]">
+                    Internal Note:
+                  </span>{' '}
+                  {n.content}
                 </div>
               ))}
             </div>
@@ -212,10 +245,16 @@ export function InboxWorkspace({ conversations }: { conversations: InboxConversa
                 </div>
 
                 <div className="flex gap-1.5 text-[10px]">
-                  <button onClick={() => handleAiDraft('find')} className="px-2 py-1 rounded border border-edge hover:bg-canvas-overlay text-ink-muted">
+                  <button
+                    onClick={() => handleAiDraft('find')}
+                    className="px-2 py-1 rounded border border-edge hover:bg-canvas-overlay text-ink-muted"
+                  >
                     Find Approved Answer
                   </button>
-                  <button onClick={() => handleAiDraft('clarify')} className="px-2 py-1 rounded border border-edge hover:bg-canvas-overlay text-ink-muted">
+                  <button
+                    onClick={() => handleAiDraft('clarify')}
+                    className="px-2 py-1 rounded border border-edge hover:bg-canvas-overlay text-ink-muted"
+                  >
                     Clarify
                   </button>
                 </div>
@@ -224,12 +263,18 @@ export function InboxWorkspace({ conversations }: { conversations: InboxConversa
               <textarea
                 value={replyText}
                 onChange={(e) => setReplyText(e.target.value)}
-                placeholder={composerMode === 'reply' ? 'Type official outbound response...' : 'Type internal note for teammate...'}
+                placeholder={
+                  composerMode === 'reply'
+                    ? 'Type official outbound response...'
+                    : 'Type internal note for teammate...'
+                }
                 className="w-full h-20 p-2 text-xs rounded border border-edge bg-canvas text-ink focus:outline-none focus:border-accent resize-none"
               />
 
               <div className="flex items-center justify-between mt-2">
-                <span className="text-[10px] text-ink-faint">Human controls final outbound reply</span>
+                <span className="text-[10px] text-ink-faint">
+                  Human controls final outbound reply
+                </span>
                 <button
                   onClick={handleSendReply}
                   className="px-4 py-1.5 text-xs font-semibold rounded bg-accent text-white hover:bg-accent/90"
@@ -249,10 +294,14 @@ export function InboxWorkspace({ conversations }: { conversations: InboxConversa
         {contact ? (
           <>
             <div>
-              <h3 className="text-xs font-semibold uppercase tracking-wider text-ink-faint mb-2">Customer 360</h3>
+              <h3 className="text-xs font-semibold uppercase tracking-wider text-ink-faint mb-2">
+                Customer 360
+              </h3>
               <div className="p-3 rounded border border-edge bg-canvas-overlay">
                 <div className="text-sm font-semibold text-ink">{contact.displayName}</div>
-                <div className="text-xs text-ink-muted">{contact.primaryEmail || 'Email not provided'}</div>
+                <div className="text-xs text-ink-muted">
+                  {contact.primaryEmail || 'Email not provided'}
+                </div>
                 {contact.company ? (
                   <div className="mt-1 text-xs text-accent font-medium">{contact.company.name}</div>
                 ) : null}
@@ -261,20 +310,29 @@ export function InboxWorkspace({ conversations }: { conversations: InboxConversa
 
             {/* Explainable Lead Score */}
             <div>
-              <h3 className="text-xs font-semibold uppercase tracking-wider text-ink-faint mb-2">Explainable Lead Score</h3>
+              <h3 className="text-xs font-semibold uppercase tracking-wider text-ink-faint mb-2">
+                Explainable Lead Score
+              </h3>
               <div className="p-3 rounded border border-edge bg-canvas-overlay">
                 <div className="flex items-center justify-between mb-2">
                   <span className="text-lg font-bold text-ink">{contact.leadScore} / 100</span>
-                  <Badge tone={contact.leadScore >= 70 ? 'good' : 'neutral'}>{contact.leadTier}</Badge>
+                  <Badge tone={contact.leadScore >= 70 ? 'good' : 'neutral'}>
+                    {contact.leadTier}
+                  </Badge>
                 </div>
                 {contact.scoreFactors && Array.isArray(contact.scoreFactors) ? (
                   <div className="space-y-1 mt-2 text-[11px] divide-y divide-edge-subtle">
-                    {contact.scoreFactors.map((sf: { factor: string; points: number }, idx: number) => (
-                      <div key={idx} className="pt-1 flex items-center justify-between text-ink-muted">
-                        <span>{sf.factor}</span>
-                        <span className="font-semibold text-status-good">+{sf.points}</span>
-                      </div>
-                    ))}
+                    {contact.scoreFactors.map(
+                      (sf: { factor: string; points: number }, idx: number) => (
+                        <div
+                          key={idx}
+                          className="pt-1 flex items-center justify-between text-ink-muted"
+                        >
+                          <span>{sf.factor}</span>
+                          <span className="font-semibold text-status-good">+{sf.points}</span>
+                        </div>
+                      ),
+                    )}
                   </div>
                 ) : null}
               </div>
@@ -283,11 +341,15 @@ export function InboxWorkspace({ conversations }: { conversations: InboxConversa
             {/* AI Customer Intelligence */}
             {intel ? (
               <div>
-                <h3 className="text-xs font-semibold uppercase tracking-wider text-ink-faint mb-2">AI Customer Intelligence</h3>
+                <h3 className="text-xs font-semibold uppercase tracking-wider text-ink-faint mb-2">
+                  AI Customer Intelligence
+                </h3>
                 <div className="p-3 rounded border border-edge bg-canvas-overlay space-y-2 text-xs">
                   <div>
                     <span className="font-semibold text-ink">Summary:</span>
-                    <p className="mt-0.5 text-ink-muted text-[11px] leading-relaxed">{intel.summary}</p>
+                    <p className="mt-0.5 text-ink-muted text-[11px] leading-relaxed">
+                      {intel.summary}
+                    </p>
                   </div>
                   <div className="grid grid-cols-2 gap-2 pt-2 border-t border-edge-subtle text-[11px]">
                     <div>
@@ -296,11 +358,15 @@ export function InboxWorkspace({ conversations }: { conversations: InboxConversa
                     </div>
                     <div>
                       <span className="text-ink-faint block">Product Interest</span>
-                      <span className="font-medium text-ink">{intel.productInterest || 'Not specified'}</span>
+                      <span className="font-medium text-ink">
+                        {intel.productInterest || 'Not specified'}
+                      </span>
                     </div>
                     <div>
                       <span className="text-ink-faint block">Seat Count</span>
-                      <span className="font-medium text-ink">{intel.seatRequirement ? `~${intel.seatRequirement} users` : 'Not stated'}</span>
+                      <span className="font-medium text-ink">
+                        {intel.seatRequirement ? `~${intel.seatRequirement} users` : 'Not stated'}
+                      </span>
                     </div>
                     <div>
                       <span className="text-ink-faint block">Timeline</span>
@@ -313,7 +379,9 @@ export function InboxWorkspace({ conversations }: { conversations: InboxConversa
                       <span className="text-ink-faint block mb-1">Explicit Requirements</span>
                       <div className="flex flex-wrap gap-1">
                         {intel.explicitRequirements.map((req, idx) => (
-                          <Badge key={idx} tone="iris">{req}</Badge>
+                          <Badge key={idx} tone="iris">
+                            {req}
+                          </Badge>
                         ))}
                       </div>
                     </div>
@@ -324,7 +392,9 @@ export function InboxWorkspace({ conversations }: { conversations: InboxConversa
 
             {/* Actions & Related Records */}
             <div>
-              <h3 className="text-xs font-semibold uppercase tracking-wider text-ink-faint mb-2">Workflows</h3>
+              <h3 className="text-xs font-semibold uppercase tracking-wider text-ink-faint mb-2">
+                Workflows
+              </h3>
               <div className="space-y-1.5 text-xs">
                 <div className="p-2 rounded border border-edge bg-canvas flex items-center justify-between">
                   <span>Open Deal</span>
@@ -338,7 +408,9 @@ export function InboxWorkspace({ conversations }: { conversations: InboxConversa
             </div>
           </>
         ) : (
-          <div className="p-8 text-center text-ink-faint">Select a conversation to view Customer 360</div>
+          <div className="p-8 text-center text-ink-faint">
+            Select a conversation to view Customer 360
+          </div>
         )}
       </Panel>
     </div>

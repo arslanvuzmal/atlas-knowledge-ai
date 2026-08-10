@@ -1,3 +1,4 @@
+import { GoogleGenAI } from '@google/genai';
 import type { GenerationRequest, GenerationResult, LlmHealth, LlmProvider } from '@/lib/ai/types';
 import { LlmError } from '@/lib/ai/types';
 import type { LlmProviderName } from '@/lib/env';
@@ -257,7 +258,7 @@ export class GeminiLlmProvider extends BaseRemoteProvider {
 
   constructor(private readonly config: ProviderConfig) {
     super();
-    this.model = config.model || 'gemini-2.0-flash';
+    this.model = config.model || 'gemini-3.6-flash';
   }
 
   async generate(request: GenerationRequest): Promise<GenerationResult> {
@@ -265,58 +266,53 @@ export class GeminiLlmProvider extends BaseRemoteProvider {
       throw new LlmError('GEMINI_API_KEY is not configured.', 'configuration', false);
     }
     const started = Date.now();
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/${this.model}:generateContent?key=${this.config.apiKey}`;
+    const ai = new GoogleGenAI({ apiKey: this.config.apiKey });
 
-    const payload = await retrying(() =>
-      callWithTimeout(
-        async (signal) => {
-          const response = await fetch(url, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              systemInstruction: { parts: [{ text: request.system }] },
-              contents: request.messages.map((message) => ({
-                role: message.role === 'assistant' ? 'model' : 'user',
-                parts: [{ text: message.content }],
-              })),
-              generationConfig: {
+    try {
+      const response = await retrying(() =>
+        callWithTimeout(
+          async () => {
+            return await ai.models.generateContent({
+              model: this.model,
+              contents: [
+                { role: 'user', parts: [{ text: request.system }] },
+                ...request.messages.map((message) => ({
+                  role: message.role === 'assistant' ? 'model' : 'user',
+                  parts: [{ text: message.content }],
+                })),
+              ],
+              config: {
                 maxOutputTokens: request.maxTokens,
-                temperature: request.temperature,
               },
-            }),
-            signal,
-          });
-          if (!response.ok) {
-            const { kind, retryable } = classify(response.status);
-            throw new LlmError(`Gemini returned HTTP ${response.status}.`, kind, retryable);
-          }
-          return (await response.json()) as {
-            candidates?: { content?: { parts?: { text?: string }[] }; finishReason?: string }[];
-            usageMetadata?: { promptTokenCount?: number; candidatesTokenCount?: number };
-          };
+            });
+          },
+          DEFAULT_TIMEOUT_MS,
+          request.signal,
+        ),
+      );
+
+      const text = response.text ?? '';
+      return {
+        text: requireText(text, 'Gemini'),
+        provider: this.name,
+        model: this.model,
+        latencyMs: Date.now() - started,
+        isDemo: false,
+        usage: {
+          inputTokens: response.usageMetadata?.promptTokenCount,
+          outputTokens: response.usageMetadata?.candidatesTokenCount,
         },
-        DEFAULT_TIMEOUT_MS,
-        request.signal,
-      ),
-    );
-
-    const candidate = payload.candidates?.[0];
-    if (candidate?.finishReason === 'SAFETY') {
-      throw new LlmError('Gemini declined to answer this request.', 'content_filter', false);
+      };
+    } catch (error) {
+      if (error instanceof LlmError) throw error;
+      const status = (error as { status?: number }).status ?? 500;
+      const { kind, retryable } = classify(status);
+      throw new LlmError(
+        error instanceof Error ? error.message : `Gemini returned an error: ${String(error)}`,
+        kind,
+        retryable,
+      );
     }
-    const text = (candidate?.content?.parts ?? []).map((part) => part.text ?? '').join('');
-
-    return {
-      text: requireText(text, 'Gemini'),
-      provider: this.name,
-      model: this.model,
-      latencyMs: Date.now() - started,
-      isDemo: false,
-      usage: {
-        inputTokens: payload.usageMetadata?.promptTokenCount,
-        outputTokens: payload.usageMetadata?.candidatesTokenCount,
-      },
-    };
   }
 }
 

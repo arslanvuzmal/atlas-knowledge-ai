@@ -1,5 +1,9 @@
--- CreateExtension
-CREATE EXTENSION IF NOT EXISTS "vector";
+-- CreateExtension safely
+DO $$ BEGIN
+  CREATE EXTENSION IF NOT EXISTS "vector";
+EXCEPTION WHEN OTHERS THEN
+  RAISE NOTICE 'pgvector extension not installed; falling back to text/hybrid search';
+END $$;
 
 -- CreateEnum
 CREATE TYPE "Role" AS ENUM ('PUBLIC', 'CUSTOMER', 'EMPLOYEE', 'MANAGER', 'ADMIN');

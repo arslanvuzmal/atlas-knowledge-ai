@@ -265,6 +265,7 @@ describe('prompt injection resistance', () => {
 describe('authentication', () => {
   it('gives the same message for a wrong password and a missing account', async () => {
     resetRateLimits();
+    await prisma.loginAttempt.deleteMany({});
     const noAccount = await attemptLogin({
       email: `absent-${Date.now()}@atlasknowledge.demo`,
       password: 'AtlasDemo!2026',

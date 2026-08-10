@@ -14,7 +14,9 @@ export default async function InboxPage() {
         include: {
           company: { select: { name: true, domain: true } },
           intelligence: true,
-          deals: { select: { id: true, name: true, amount: true, stage: { select: { name: true } } } },
+          deals: {
+            select: { id: true, name: true, amount: true, stage: { select: { name: true } } },
+          },
         },
       },
       messages: {
@@ -37,7 +39,9 @@ export default async function InboxPage() {
           primaryEmail: c.contact.primaryEmail,
           leadScore: c.contact.leadScore,
           leadTier: c.contact.leadTier,
-          scoreFactors: Array.isArray(c.contact.scoreFactors) ? (c.contact.scoreFactors as unknown as { factor: string; points: number }[]) : undefined,
+          scoreFactors: Array.isArray(c.contact.scoreFactors)
+            ? (c.contact.scoreFactors as unknown as { factor: string; points: number }[])
+            : undefined,
           company: c.contact.company,
           intelligence: c.contact.intelligence
             ? {

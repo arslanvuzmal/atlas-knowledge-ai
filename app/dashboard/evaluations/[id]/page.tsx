@@ -38,5 +38,9 @@ export default async function EvaluationDetailPage({ params }: Props) {
     return <div className="p-8 text-center text-ink-faint">Evaluation not found</div>;
   }
 
-  return <EvaluationDetail evaluation={evaluation as unknown as Parameters<typeof EvaluationDetail>[0]['evaluation']} />;
+  return (
+    <EvaluationDetail
+      evaluation={evaluation as unknown as Parameters<typeof EvaluationDetail>[0]['evaluation']}
+    />
+  );
 }

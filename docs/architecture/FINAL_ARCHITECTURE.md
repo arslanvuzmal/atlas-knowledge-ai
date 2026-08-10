@@ -2,7 +2,7 @@
 
 **Document Version:** 2.0.0  
 **Target System:** Atlas Customer Intelligence Platform  
-**Governance:** Governed RAG + Customer Intelligence CRM + Enterprise Operations  
+**Governance:** Governed RAG + Customer Intelligence CRM + Enterprise Operations
 
 ---
 
@@ -11,7 +11,8 @@
 Atlas Customer Intelligence transforms traditional RAG document Q&A into a governed, enterprise-grade customer intelligence CRM.
 
 ### Core Proposition
-*"Every customer conversation, grounded in what your business actually knows."*
+
+_"Every customer conversation, grounded in what your business actually knows."_
 
 ```
 CUSTOMER / VISITOR
@@ -84,10 +85,12 @@ Fast Response (~100ms)     Role Scope & Sensitivity Check
 ## 2. Multi-Tenant Workspace & Role Architecture
 
 ### Workspace Boundaries
+
 - Every entity (`Contact`, `Company`, `Conversation`, `Deal`, `Task`, `Ticket`, `KnowledgeBase`, `AutomationRule`, `CrmActivity`) belongs to a `Workspace`.
 - Database queries enforce server-side scoping: `WHERE workspaceId = :workspaceId AND id = :entityId`.
 
 ### Workspace Roles (`WorkspaceMember`)
+
 - `OWNER`: Full workspace administration, billing, export, member management.
 - `ADMIN`: Infrastructure settings, integrations, knowledge management, user roles.
 - `MANAGER`: CRM operations, assignment, analytics, pipeline stage configuration.
@@ -95,13 +98,14 @@ Fast Response (~100ms)     Role Scope & Sensitivity Check
 - `VIEWER`: Read-only access to assigned CRM records and knowledge bases.
 
 ### Knowledge Sensitivity (`AccessLevel`)
+
 - `PUBLIC`: Publicly accessible knowledge.
 - `CUSTOMER`: Accessible to logged-in customers.
 - `EMPLOYEE`: Internal employee knowledge base.
 - `MANAGER`: Managerial policies and playbooks.
 - `ADMIN`: Executive, compliance, and infrastructure documents.
 
-*Note: Workspace roles control CRM execution rights. Knowledge AccessLevels control document retrieval permissions. The two are distinct and independently enforced.*
+_Note: Workspace roles control CRM execution rights. Knowledge AccessLevels control document retrieval permissions. The two are distinct and independently enforced._
 
 ---
 
@@ -146,6 +150,7 @@ To ensure conversational chat turns respond immediately (<1s), all CRM extractio
 ## 5. Precise Conflict Detection Engine
 
 A conflict occurs ONLY when:
+
 1. **Same Subject/Entity** AND
 2. **Same Property/Policy** AND
 3. **Comparable Scope** AND

@@ -36,5 +36,10 @@ export default async function EvaluationEditPage({ params }: Props) {
     select: { id: true, name: true },
   });
 
-  return <EvaluationEditForm evaluation={evaluation as unknown as Parameters<typeof EvaluationEditForm>[0]['evaluation']} knowledgeBases={knowledgeBases} />;
+  return (
+    <EvaluationEditForm
+      evaluation={evaluation as unknown as Parameters<typeof EvaluationEditForm>[0]['evaluation']}
+      knowledgeBases={knowledgeBases}
+    />
+  );
 }

@@ -67,9 +67,9 @@ export function calculateConfidence(
 
   const topScore = Math.max(0, Math.min(1, chunks[0].rerankScore));
 
-  // A passage counts as "supporting" when it covers at least a third of the
+  // A passage counts as "supporting" when it covers at least half of the
   // question's terms on its own.
-  const supportingChunks = chunks.filter((chunk) => chunk.signals.coverage >= 0.34).length;
+  const supportingChunks = chunks.filter((chunk) => chunk.signals.coverage >= 0.45).length;
   const agreement = Math.min(1, supportingChunks / 3);
 
   const second = chunks[1]?.rerankScore ?? 0;
@@ -99,7 +99,7 @@ export function determineGrounding(
   breakdown: ConfidenceBreakdown,
   threshold: number,
 ): GroundingLevel {
-  if (breakdown.supportingChunks === 0 && breakdown.coverage < 0.5) return 'UNSUPPORTED';
+  if (breakdown.supportingChunks === 0) return 'UNSUPPORTED';
   if (breakdown.confidence < threshold * 0.75) return 'UNSUPPORTED';
   if (breakdown.confidence < threshold) return 'PARTIALLY_SUPPORTED';
   if (breakdown.coverage < 0.6) return 'PARTIALLY_SUPPORTED';

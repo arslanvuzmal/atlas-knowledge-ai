@@ -30,7 +30,10 @@ export default async function CompaniesPage() {
           {items.map((company) => (
             <tr key={company.id} className="hover:bg-canvas-overlay/50 transition-colors">
               <Cell className="font-semibold text-ink">
-                <Link href={`/dashboard/companies/${company.id}`} className="hover:underline hover:text-accent">
+                <Link
+                  href={`/dashboard/companies/${company.id}`}
+                  className="hover:underline hover:text-accent"
+                >
                   {company.name}
                 </Link>
               </Cell>

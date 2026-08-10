@@ -30,11 +30,16 @@ export default async function ContactsPage() {
           {items.map((contact) => (
             <tr key={contact.id} className="hover:bg-canvas-overlay/50 transition-colors">
               <Cell className="font-semibold text-ink">
-                <Link href={`/dashboard/contacts/${contact.id}`} className="hover:underline hover:text-accent">
+                <Link
+                  href={`/dashboard/contacts/${contact.id}`}
+                  className="hover:underline hover:text-accent"
+                >
                   {contact.displayName}
                 </Link>
                 {contact.primaryEmail ? (
-                  <span className="block text-[11px] font-normal text-ink-faint">{contact.primaryEmail}</span>
+                  <span className="block text-[11px] font-normal text-ink-faint">
+                    {contact.primaryEmail}
+                  </span>
                 ) : null}
               </Cell>
               <Cell>{contact.company?.name || '—'}</Cell>

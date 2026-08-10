@@ -2,23 +2,17 @@ import { describe, expect, it } from 'vitest';
 import { detectMaterialConflicts } from '@/lib/rag/conflict';
 import type { RerankedChunk } from '@/lib/reranking';
 
-function makeChunk(
-  documentId: string,
-  documentTitle: string,
-  content: string,
-): RerankedChunk {
+function makeChunk(documentId: string, documentTitle: string, content: string): RerankedChunk {
   return {
     id: `chunk_${Math.random()}`,
     documentId,
     documentVersionId: 'v1',
     chunkIndex: 0,
     content,
-    tokenCount: content.split(/\s+/).length,
     pageNumber: 1,
     sectionTitle: null,
     accessLevel: 'PUBLIC',
     knowledgeBaseId: 'kb1',
-    searchText: content.toLowerCase(),
     metadata: null,
     embeddingProvider: 'demo',
     embeddingModel: 'demo',
@@ -83,30 +77,16 @@ describe('Material Conflict Detection Engine', () => {
       'Complete issue resolution time SLA is 24 hours for urgent tickets.',
     );
 
-    const result = detectMaterialConflicts(
-      [chunk1, chunk2],
-      'What is the SLA response time?',
-    );
+    const result = detectMaterialConflicts([chunk1, chunk2], 'What is the SLA response time?');
 
     expect(result.detected).toBe(false);
   });
 
   it('does NOT flag different time periods as conflicts', () => {
-    const chunk1 = makeChunk(
-      'doc1',
-      '2025 Policy',
-      'In 2025 annual leave is 20 days.',
-    );
-    const chunk2 = makeChunk(
-      'doc2',
-      '2026 Policy',
-      'In 2026 annual leave is 25 days.',
-    );
+    const chunk1 = makeChunk('doc1', '2025 Policy', 'In 2025 annual leave is 20 days.');
+    const chunk2 = makeChunk('doc2', '2026 Policy', 'In 2026 annual leave is 25 days.');
 
-    const result = detectMaterialConflicts(
-      [chunk1, chunk2],
-      'How many leave days in 2026?',
-    );
+    const result = detectMaterialConflicts([chunk1, chunk2], 'How many leave days in 2026?');
 
     expect(result.detected).toBe(false);
   });
@@ -123,10 +103,7 @@ describe('Material Conflict Detection Engine', () => {
       'Production passwords must not be shared under any circumstances.',
     );
 
-    const result = detectMaterialConflicts(
-      [chunk1, chunk2],
-      'What is the refund policy?',
-    );
+    const result = detectMaterialConflicts([chunk1, chunk2], 'What is the refund policy?');
 
     expect(result.detected).toBe(false);
   });
@@ -143,10 +120,7 @@ describe('Material Conflict Detection Engine', () => {
       'HIPAA compliance is unsupported on the Team plan.',
     );
 
-    const result = detectMaterialConflicts(
-      [chunk1, chunk2],
-      'Is HIPAA supported on Team plan?',
-    );
+    const result = detectMaterialConflicts([chunk1, chunk2], 'Is HIPAA supported on Team plan?');
 
     expect(result.detected).toBe(true);
     expect(result.conflictingDocuments).toHaveLength(2);
@@ -182,10 +156,7 @@ describe('Material Conflict Detection Engine', () => {
     const chunk1 = makeChunk('doc1', 'Doc 1', 'Annual leave is 25 days.');
     const chunk2 = makeChunk('doc1', 'Doc 1', 'Annual leave is 25 days.');
 
-    const result = detectMaterialConflicts(
-      [chunk1, chunk2],
-      'How many annual leave days?',
-    );
+    const result = detectMaterialConflicts([chunk1, chunk2], 'How many annual leave days?');
 
     expect(result.detected).toBe(false);
   });

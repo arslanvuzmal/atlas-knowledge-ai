@@ -59,13 +59,16 @@ export function routeFastChat(question: string): FastRouteResult {
   const isSocialMatch = SOCIAL_ONLY_PATTERNS.some((pattern) => pattern.test(trimmed));
 
   if (isSocialMatch) {
-    let replyText = "Hello! I'm Atlas, your governed Customer Intelligence Assistant. How can I help you today?";
+    let replyText =
+      "Hello! I'm Atlas, your governed Customer Intelligence Assistant. How can I help you today?";
     if (lower.includes('thanks') || lower.includes('thank')) {
-      replyText = "You're very welcome! Let me know if you have any other questions about our platform or policies.";
+      replyText =
+        "You're very welcome! Let me know if you have any other questions about our platform or policies.";
     } else if (lower.includes('bye') || lower.includes('goodbye')) {
-      replyText = "Goodbye! Have a great day ahead.";
+      replyText = 'Goodbye! Have a great day ahead.';
     } else if (lower.includes('what can you do') || lower.includes('capabilities')) {
-      replyText = "I can answer questions grounded in approved business policies, pricing, and security documentation, capture customer requirements, and connect you with our sales or support team.";
+      replyText =
+        'I can answer questions grounded in approved business policies, pricing, and security documentation, capture customer requirements, and connect you with our sales or support team.';
     }
 
     return {

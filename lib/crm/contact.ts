@@ -40,7 +40,15 @@ export function normalizeEmail(email: string): string {
  * Links anonymous visitor to contact record when email or name is provided.
  */
 export async function resolveIdentity(input: ResolveIdentityInput): Promise<ContactData> {
-  const { workspaceId, visitorKey, email, name, phone, source = 'Website Chat', sourceDetail } = input;
+  const {
+    workspaceId,
+    visitorKey,
+    email,
+    name,
+    phone,
+    source = 'Website Chat',
+    sourceDetail,
+  } = input;
 
   const normalized = email ? normalizeEmail(email) : null;
 
@@ -64,7 +72,10 @@ export async function resolveIdentity(input: ResolveIdentityInput): Promise<Cont
         data: {
           firstName: contact.firstName ?? parsedNames.firstName,
           lastName: contact.lastName ?? parsedNames.lastName,
-          displayName: contact.displayName !== 'Anonymous Visitor' && contact.displayName !== 'Visitor' ? contact.displayName : (name ?? contact.displayName),
+          displayName:
+            contact.displayName !== 'Anonymous Visitor' && contact.displayName !== 'Visitor'
+              ? contact.displayName
+              : (name ?? contact.displayName),
           phone: contact.phone ?? phone,
           visitorKey: contact.visitorKey ?? visitorKey,
           lastSeenAt: new Date(),
@@ -117,7 +128,10 @@ export async function resolveIdentity(input: ResolveIdentityInput): Promise<Cont
       const updated = await prisma.contact.update({
         where: { id: existingVisitor.id },
         data: {
-          displayName: name && existingVisitor.displayName === 'Anonymous Visitor' ? name : existingVisitor.displayName,
+          displayName:
+            name && existingVisitor.displayName === 'Anonymous Visitor'
+              ? name
+              : existingVisitor.displayName,
           lastSeenAt: new Date(),
           lastActivityAt: new Date(),
         },

@@ -47,7 +47,11 @@ export async function processOutboxEvents(limit = 10): Promise<number> {
       switch (event.eventType) {
         case 'CHAT_TURN_COMPLETED':
           if (typeof payload.contactId === 'string' && Array.isArray(payload.messages)) {
-            await extractCustomerIntelligence(event.workspaceId, payload.contactId, payload.messages);
+            await extractCustomerIntelligence(
+              event.workspaceId,
+              payload.contactId,
+              payload.messages,
+            );
           }
           break;
 

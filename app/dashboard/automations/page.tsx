@@ -18,7 +18,16 @@ export default async function AutomationsPage() {
       />
 
       <Panel className="p-0">
-        <DataTable headers={['Rule Name', 'Trigger Event', 'Status', 'Conditions Count', 'Actions Count', 'Created At']}>
+        <DataTable
+          headers={[
+            'Rule Name',
+            'Trigger Event',
+            'Status',
+            'Conditions Count',
+            'Actions Count',
+            'Created At',
+          ]}
+        >
           {rules.map((rule) => {
             const conditions = Array.isArray(rule.conditions) ? rule.conditions : [];
             const actions = Array.isArray(rule.actions) ? rule.actions : [];

@@ -14,17 +14,35 @@ export default async function TicketsPage() {
       />
 
       <Panel className="p-0">
-        <DataTable headers={['Subject', 'Priority', 'Status', 'Contact', 'Company', 'Assignee', 'Created At']}>
+        <DataTable
+          headers={[
+            'Subject',
+            'Priority',
+            'Status',
+            'Contact',
+            'Company',
+            'Assignee',
+            'Created At',
+          ]}
+        >
           {items.map((ticket) => (
             <tr key={ticket.id} className="hover:bg-canvas-overlay/50 transition-colors">
               <Cell className="font-semibold text-ink">{ticket.subject}</Cell>
               <Cell>
-                <Badge tone={ticket.priority === 'HIGH' || ticket.priority === 'URGENT' ? 'critical' : 'neutral'}>
+                <Badge
+                  tone={
+                    ticket.priority === 'HIGH' || ticket.priority === 'URGENT'
+                      ? 'critical'
+                      : 'neutral'
+                  }
+                >
                   {ticket.priority}
                 </Badge>
               </Cell>
               <Cell>
-                <Badge tone={ticket.status === 'RESOLVED' ? 'good' : 'neutral'}>{ticket.status}</Badge>
+                <Badge tone={ticket.status === 'RESOLVED' ? 'good' : 'neutral'}>
+                  {ticket.status}
+                </Badge>
               </Cell>
               <Cell>{ticket.contact?.displayName || '—'}</Cell>
               <Cell>{ticket.company?.name || '—'}</Cell>

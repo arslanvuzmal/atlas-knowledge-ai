@@ -73,6 +73,7 @@ export async function retrieve(request: RetrievalRequest): Promise<RetrievalResu
     knowledgeBaseId: request.knowledgeBaseId ?? null,
     documentId: request.documentId ?? null,
     limit: settings.retrievalCount,
+    queryText: preparation.effective,
   };
 
   const queryVector = await embedQuery(preparation.effective);

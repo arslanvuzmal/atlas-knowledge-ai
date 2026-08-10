@@ -59,11 +59,15 @@ export default async function ContactDetailPage({ params }: { params: Promise<{ 
         </Panel>
         <Panel className="p-4">
           <div className="text-xs text-ink-faint">Primary Company</div>
-          <div className="text-lg font-semibold text-accent mt-1">{contact.company?.name || 'Unassociated'}</div>
+          <div className="text-lg font-semibold text-accent mt-1">
+            {contact.company?.name || 'Unassociated'}
+          </div>
         </Panel>
         <Panel className="p-4">
           <div className="text-xs text-ink-faint">Primary Intent</div>
-          <div className="text-lg font-semibold text-ink mt-1">{intel?.primaryIntent || 'General'}</div>
+          <div className="text-lg font-semibold text-ink mt-1">
+            {intel?.primaryIntent || 'General'}
+          </div>
         </Panel>
       </div>
 
@@ -72,7 +76,10 @@ export default async function ContactDetailPage({ params }: { params: Promise<{ 
         <div className="lg:col-span-7 space-y-6">
           {intel ? (
             <Panel className="p-5">
-              <PanelHeader title="AI Customer Intelligence" description="Derived from governed customer interactions" />
+              <PanelHeader
+                title="AI Customer Intelligence"
+                description="Derived from governed customer interactions"
+              />
               <div className="space-y-4 pt-4 text-xs">
                 <div>
                   <span className="font-semibold text-ink">Executive Summary:</span>
@@ -82,7 +89,10 @@ export default async function ContactDetailPage({ params }: { params: Promise<{ 
                   items={[
                     { term: 'Customer Need', value: intel.customerNeed || '—' },
                     { term: 'Product Interest', value: intel.productInterest || '—' },
-                    { term: 'Seat Requirement', value: intel.seatRequirement ? `${intel.seatRequirement} seats` : '—' },
+                    {
+                      term: 'Seat Requirement',
+                      value: intel.seatRequirement ? `${intel.seatRequirement} seats` : '—',
+                    },
                     { term: 'Timeline', value: intel.timeline || '—' },
                     { term: 'Urgency', value: intel.urgency || '—' },
                     { term: 'Sentiment', value: intel.sentiment || '—' },
@@ -94,15 +104,22 @@ export default async function ContactDetailPage({ params }: { params: Promise<{ 
 
           {/* Unified Activity Timeline */}
           <Panel className="p-5">
-            <PanelHeader title="Unified Activity Timeline" description="Chronological record of every customer event" />
+            <PanelHeader
+              title="Unified Activity Timeline"
+              description="Chronological record of every customer event"
+            />
             <div className="space-y-4 pt-4">
               {contact.activities.map((act) => (
                 <div key={act.id} className="flex gap-3 text-xs">
                   <div className="w-2 h-2 rounded-full bg-accent mt-1.5 shrink-0" />
                   <div>
                     <div className="font-semibold text-ink">{act.title}</div>
-                    {act.description ? <div className="text-ink-muted mt-0.5">{act.description}</div> : null}
-                    <div className="text-[10px] text-ink-faint mt-1">{new Date(act.createdAt).toLocaleString()}</div>
+                    {act.description ? (
+                      <div className="text-ink-muted mt-0.5">{act.description}</div>
+                    ) : null}
+                    <div className="text-[10px] text-ink-faint mt-1">
+                      {new Date(act.createdAt).toLocaleString()}
+                    </div>
                   </div>
                 </div>
               ))}
@@ -116,7 +133,10 @@ export default async function ContactDetailPage({ params }: { params: Promise<{ 
             <PanelHeader title="Deals" />
             <div className="space-y-2 pt-3">
               {contact.deals.map((d) => (
-                <div key={d.id} className="p-3 rounded border border-edge bg-canvas-overlay text-xs flex justify-between">
+                <div
+                  key={d.id}
+                  className="p-3 rounded border border-edge bg-canvas-overlay text-xs flex justify-between"
+                >
                   <div>
                     <div className="font-semibold text-ink">{d.name}</div>
                     <div className="text-ink-faint mt-0.5">Stage: {d.stage.name}</div>
@@ -125,7 +145,9 @@ export default async function ContactDetailPage({ params }: { params: Promise<{ 
                 </div>
               ))}
 
-              {contact.deals.length === 0 ? <div className="text-xs text-ink-faint py-2">No open deals</div> : null}
+              {contact.deals.length === 0 ? (
+                <div className="text-xs text-ink-faint py-2">No open deals</div>
+              ) : null}
             </div>
           </Panel>
 
@@ -133,7 +155,10 @@ export default async function ContactDetailPage({ params }: { params: Promise<{ 
             <PanelHeader title="Tasks" />
             <div className="space-y-2 pt-3">
               {contact.tasks.map((t) => (
-                <div key={t.id} className="p-3 rounded border border-edge bg-canvas-overlay text-xs flex justify-between">
+                <div
+                  key={t.id}
+                  className="p-3 rounded border border-edge bg-canvas-overlay text-xs flex justify-between"
+                >
                   <div>
                     <div className="font-semibold text-ink">{t.title}</div>
                     <div className="text-ink-faint mt-0.5">Status: {t.status}</div>
@@ -142,7 +167,9 @@ export default async function ContactDetailPage({ params }: { params: Promise<{ 
                 </div>
               ))}
 
-              {contact.tasks.length === 0 ? <div className="text-xs text-ink-faint py-2">No pending tasks</div> : null}
+              {contact.tasks.length === 0 ? (
+                <div className="text-xs text-ink-faint py-2">No pending tasks</div>
+              ) : null}
             </div>
           </Panel>
         </div>

@@ -208,7 +208,9 @@ export function DefinitionList({ items }: { items: { term: string; value: ReactN
     <dl className="grid gap-x-6 gap-y-3 sm:grid-cols-2">
       {items.map((item) => (
         <div key={item.term} className="min-w-0">
-          <dt className="font-mono text-[10.5px] font-bold uppercase tracking-wider text-ink-faint">{item.term}</dt>
+          <dt className="font-mono text-[10.5px] font-bold uppercase tracking-wider text-ink-faint">
+            {item.term}
+          </dt>
           <dd className="mt-0.5 break-words text-xs text-ink">{item.value}</dd>
         </div>
       ))}

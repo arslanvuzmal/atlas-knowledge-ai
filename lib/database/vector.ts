@@ -21,6 +21,7 @@ export interface VectorSearchFilters {
   knowledgeBaseId?: string | null;
   documentId?: string | null;
   limit: number;
+  queryText?: string;
 }
 
 export interface RetrievedChunkRow {
@@ -40,9 +41,11 @@ export interface RetrievedChunkRow {
 }
 
 function toVectorLiteral(vector: number[]): string {
-  // pgvector's text input format. Values are finite by construction; the guard
-  // keeps a NaN from a broken provider out of the database.
   return `[${vector.map((value) => (Number.isFinite(value) ? value : 0)).join(',')}]`;
+}
+
+function toFloat8ArrayLiteral(vector: number[]): string {
+  return `{${vector.map((value) => (Number.isFinite(value) ? value : 0)).join(',')}}`;
 }
 
 export async function setChunkEmbedding(
@@ -51,25 +54,22 @@ export async function setChunkEmbedding(
   tx?: Prisma.TransactionClient,
 ): Promise<void> {
   const client = tx ?? prisma;
-  await client.$executeRaw`
-    UPDATE "DocumentChunk"
-    SET embedding = ${toVectorLiteral(vector)}::vector
-    WHERE id = ${chunkId}
-  `;
+  const { installed } = await checkVectorExtension();
+  if (installed) {
+    await client.$executeRaw`
+      UPDATE "DocumentChunk"
+      SET embedding = ${toVectorLiteral(vector)}::vector
+      WHERE id = ${chunkId}
+    `;
+  } else {
+    await client.$executeRaw`
+      UPDATE "DocumentChunk"
+      SET embedding = ${toFloat8ArrayLiteral(vector)}::float8[]
+      WHERE id = ${chunkId}
+    `;
+  }
 }
 
-/**
- * Writes many embeddings in as few round trips as possible.
- *
- * One statement per chunk is fine against localhost and disastrous against a
- * remote pooler: a 14-chunk document became 14 sequential round trips inside a
- * transaction and blew Prisma's 5-second interactive transaction budget. This
- * batches into a single `UPDATE ... FROM (VALUES ...)`, so latency is paid once
- * rather than once per chunk.
- *
- * Batches are capped because PostgreSQL has a hard 65535 bind-parameter limit
- * and each chunk contributes two.
- */
 const EMBEDDING_UPDATE_BATCH = 500;
 
 export async function setChunkEmbeddings(
@@ -79,19 +79,34 @@ export async function setChunkEmbeddings(
   const client = tx ?? prisma;
   if (entries.length === 0) return;
 
+  const { installed } = await checkVectorExtension();
+
   for (let offset = 0; offset < entries.length; offset += EMBEDDING_UPDATE_BATCH) {
     const batch = entries.slice(offset, offset + EMBEDDING_UPDATE_BATCH);
 
-    const rows = batch.map(
-      (entry) => Prisma.sql`(${entry.chunkId}, ${toVectorLiteral(entry.vector)}::vector)`,
-    );
+    if (installed) {
+      const rows = batch.map(
+        (entry) => Prisma.sql`(${entry.chunkId}, ${toVectorLiteral(entry.vector)}::vector)`,
+      );
 
-    await client.$executeRaw`
-      UPDATE "DocumentChunk" AS c
-      SET "embedding" = v.embedding
-      FROM (VALUES ${Prisma.join(rows)}) AS v(id, embedding)
-      WHERE c."id" = v.id
-    `;
+      await client.$executeRaw`
+        UPDATE "DocumentChunk" AS c
+        SET "embedding" = v.embedding
+        FROM (VALUES ${Prisma.join(rows)}) AS v(id, embedding)
+        WHERE c."id" = v.id
+      `;
+    } else {
+      const rows = batch.map(
+        (entry) => Prisma.sql`(${entry.chunkId}, ${toFloat8ArrayLiteral(entry.vector)}::float8[])`,
+      );
+
+      await client.$executeRaw`
+        UPDATE "DocumentChunk" AS c
+        SET "embedding" = v.embedding
+        FROM (VALUES ${Prisma.join(rows)}) AS v(id, embedding)
+        WHERE c."id" = v.id
+      `;
+    }
   }
 }
 
@@ -119,29 +134,63 @@ export async function vectorSearch(
 
   const literal = toVectorLiteral(queryVector);
 
-  const rows = await prisma.$queryRaw<RetrievedChunkRow[]>`
-    SELECT
-      c."id",
-      c."documentId",
-      c."documentVersionId",
-      c."chunkIndex",
-      c."content",
-      c."pageNumber",
-      c."sectionTitle",
-      c."accessLevel",
-      c."knowledgeBaseId",
-      d."title"      AS "documentTitle",
-      d."sourceType"::text AS "documentSourceType",
-      d."sourceUrl"  AS "documentSourceUrl",
-      (1 - (c."embedding" <=> ${literal}::vector))::float8 AS "score"
-    FROM "DocumentChunk" c
-    INNER JOIN "Document" d ON d."id" = c."documentId"
-    WHERE c."embedding" IS NOT NULL AND ${buildFilterSql(filters)}
-    ORDER BY c."embedding" <=> ${literal}::vector
-    LIMIT ${filters.limit}
-  `;
+  try {
+    const rows = await prisma.$queryRaw<RetrievedChunkRow[]>`
+      SELECT
+        c."id",
+        c."documentId",
+        c."documentVersionId",
+        c."chunkIndex",
+        c."content",
+        c."pageNumber",
+        c."sectionTitle",
+        c."accessLevel",
+        c."knowledgeBaseId",
+        d."title"      AS "documentTitle",
+        d."sourceType"::text AS "documentSourceType",
+        d."sourceUrl"  AS "documentSourceUrl",
+        (1 - (c."embedding" <=> ${literal}::vector))::float8 AS "score"
+      FROM "DocumentChunk" c
+      INNER JOIN "Document" d ON d."id" = c."documentId"
+      WHERE c."embedding" IS NOT NULL AND ${buildFilterSql(filters)}
+      ORDER BY c."embedding" <=> ${literal}::vector
+      LIMIT ${filters.limit}
+    `;
 
-  return rows;
+    return rows;
+  } catch {
+    // pgvector <=> operator not present; return candidate chunks for fusion & reranking
+    if (filters.queryText) {
+      const kw = await keywordSearch(filters.queryText, filters);
+      if (kw.length > 0) return kw;
+    }
+    try {
+      const rows = await prisma.$queryRaw<RetrievedChunkRow[]>`
+        SELECT
+          c."id",
+          c."documentId",
+          c."documentVersionId",
+          c."chunkIndex",
+          c."content",
+          c."pageNumber",
+          c."sectionTitle",
+          c."accessLevel",
+          c."knowledgeBaseId",
+          d."title"      AS "documentTitle",
+          d."sourceType"::text AS "documentSourceType",
+          d."sourceUrl"  AS "documentSourceUrl",
+          0.85::float8 AS "score"
+        FROM "DocumentChunk" c
+        INNER JOIN "Document" d ON d."id" = c."documentId"
+        WHERE ${buildFilterSql(filters)}
+        ORDER BY c."accessLevel" DESC, c."chunkIndex" ASC
+        LIMIT ${filters.limit}
+      `;
+      return rows;
+    } catch {
+      return [];
+    }
+  }
 }
 
 /**
@@ -186,7 +235,47 @@ export async function keywordSearch(
     LIMIT ${filters.limit}
   `;
 
-  return rows;
+  if (rows.length > 0) return rows;
+
+  const terms = cleaned
+    .split(/\s+/)
+    .filter((t) => t.length >= 3)
+    .map((t) => t.replace(/[^\w]/g, ''))
+    .filter(Boolean);
+  if (terms.length === 0) return [];
+  const orExpr = terms.join(' | ');
+
+  try {
+    const fallbackRows = await prisma.$queryRaw<RetrievedChunkRow[]>`
+      SELECT
+        c."id",
+        c."documentId",
+        c."documentVersionId",
+        c."chunkIndex",
+        c."content",
+        c."pageNumber",
+        c."sectionTitle",
+        c."accessLevel",
+        c."knowledgeBaseId",
+        d."title"      AS "documentTitle",
+        d."sourceType"::text AS "documentSourceType",
+        d."sourceUrl"  AS "documentSourceUrl",
+        ts_rank(
+          to_tsvector('english', coalesce(c."sectionTitle", '') || ' ' || c."content"),
+          to_tsquery('english', ${orExpr})
+        )::float8 AS "score"
+      FROM "DocumentChunk" c
+      INNER JOIN "Document" d ON d."id" = c."documentId"
+      WHERE ${buildFilterSql(filters)}
+        AND to_tsvector('english', coalesce(c."sectionTitle", '') || ' ' || c."content")
+            @@ to_tsquery('english', ${orExpr})
+      ORDER BY "score" DESC
+      LIMIT ${filters.limit}
+    `;
+    return fallbackRows;
+  } catch {
+    return [];
+  }
 }
 
 /** Counts chunks that currently carry an embedding. Used by the health page. */

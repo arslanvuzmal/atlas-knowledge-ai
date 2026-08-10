@@ -39,7 +39,10 @@ export async function associateCompanyByEmail(
   if (consumerDomains.includes(domain)) return null;
 
   // Infer company name from domain if missing
-  const inferredName = domain.split('.')[0].replace(/[-_]/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
+  const inferredName = domain
+    .split('.')[0]
+    .replace(/[-_]/g, ' ')
+    .replace(/\b\w/g, (c) => c.toUpperCase());
 
   let company = await prisma.company.findUnique({
     where: {

@@ -21,10 +21,7 @@ export interface ConflictResult {
  * 3. Comparable scope (e.g. both apply to Annual plan; Annual vs Monthly are DIFFERENT scopes)
  * 4. Incompatible claims (e.g. 30 days vs 60 days for the SAME plan)
  */
-export function detectMaterialConflicts(
-  chunks: RerankedChunk[],
-  question: string,
-): ConflictResult {
+export function detectMaterialConflicts(chunks: RerankedChunk[], question: string): ConflictResult {
   if (chunks.length < 2) {
     return { detected: false, conflictingDocuments: [] };
   }
@@ -171,7 +168,10 @@ export function detectMaterialConflicts(
           scopes: claimScopes,
           topicTerms,
           excerpt: text
-            .slice(Math.max(0, matchIdx - 40), Math.min(text.length, matchIdx + match[0].length + 60))
+            .slice(
+              Math.max(0, matchIdx - 40),
+              Math.min(text.length, matchIdx + match[0].length + 60),
+            )
             .trim(),
         });
       }
@@ -249,8 +249,14 @@ export function detectMaterialConflicts(
       const posLower = posChunk.content.toLowerCase();
       const negLower = negChunk.content.toLowerCase();
 
-      const posWords = posLower.replace(/[^\w\s]/g, '').split(/\s+/).filter((w) => w.length > 4);
-      const negWords = negLower.replace(/[^\w\s]/g, '').split(/\s+/).filter((w) => w.length > 4);
+      const posWords = posLower
+        .replace(/[^\w\s]/g, '')
+        .split(/\s+/)
+        .filter((w) => w.length > 4);
+      const negWords = negLower
+        .replace(/[^\w\s]/g, '')
+        .split(/\s+/)
+        .filter((w) => w.length > 4);
       const overlap = posWords.filter((w) => negWords.includes(w) && questionWords.includes(w));
 
       if (overlap.length >= 1) {

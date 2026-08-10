@@ -160,7 +160,9 @@ export function ChatPanel({
   }
 
   const busy = phase !== 'idle';
-  const latestAssistantTurn = [...turns].reverse().find((t) => t.role === 'assistant' && !t.errored);
+  const latestAssistantTurn = [...turns]
+    .reverse()
+    .find((t) => t.role === 'assistant' && !t.errored);
 
   return (
     <div className="flex h-full min-h-0 flex-col bg-canvas">
@@ -170,11 +172,7 @@ export function ChatPanel({
           <Badge tone="accent">{roleLabel}</Badge>
           <span className="font-mono text-xs text-ink-faint">{reachLabel}</span>
         </div>
-        {demoMode ? (
-          <Badge tone="iris">
-            DEMO_PROVIDERS
-          </Badge>
-        ) : null}
+        {demoMode ? <Badge tone="iris">DEMO_PROVIDERS</Badge> : null}
       </div>
 
       {/* 62 / 38 Desktop Split Workspace */}
@@ -269,7 +267,9 @@ export function ChatPanel({
           <div className="flex items-center justify-between border-b border-edge pb-3">
             <div className="flex items-center gap-2">
               <span className="h-2 w-2 rounded-full bg-teal animate-pulse" />
-              <h3 className="font-mono text-xs font-bold uppercase tracking-wider text-ink">EVIDENCE_PANEL</h3>
+              <h3 className="font-mono text-xs font-bold uppercase tracking-wider text-ink">
+                EVIDENCE_PANEL
+              </h3>
             </div>
             {latestAssistantTurn?.citations?.length ? (
               <span className="font-mono text-[10.5px] text-teal font-semibold">
@@ -315,10 +315,15 @@ export function ChatPanel({
               </span>
               <ul className="space-y-1.5 text-xs text-ink-muted">
                 {latestAssistantTurn.relatedSources.map((s) => (
-                  <li key={s.documentId} className="flex items-center justify-between truncate border-b border-edge-subtle pb-1">
+                  <li
+                    key={s.documentId}
+                    className="flex items-center justify-between truncate border-b border-edge-subtle pb-1"
+                  >
                     <span className="truncate text-ink font-medium">{s.title}</span>
                     {s.sectionTitle ? (
-                      <span className="font-mono text-[10px] text-ink-faint shrink-0 ml-2">{s.sectionTitle}</span>
+                      <span className="font-mono text-[10px] text-ink-faint shrink-0 ml-2">
+                        {s.sectionTitle}
+                      </span>
                     ) : null}
                   </li>
                 ))}
@@ -351,7 +356,9 @@ function EmptyConversation({
             : 'Grounded Enterprise Knowledge Search'}
         </h2>
         <p className="mt-1 text-xs leading-relaxed text-ink-muted">
-          Answers are strictly derived from approved sources permitted under your role. Every claim carries an interactive source citation. When evidence is insufficient, Atlas refuses to guess.
+          Answers are strictly derived from approved sources permitted under your role. Every claim
+          carries an interactive source citation. When evidence is insufficient, Atlas refuses to
+          guess.
         </p>
       </div>
 
@@ -378,7 +385,9 @@ function UserTurn({ turn }: { turn: ChatTurn }) {
   return (
     <div className="flex justify-end">
       <div className="max-w-[85%] rounded bg-canvas-overlay border border-edge-strong px-4 py-2.5">
-        <p className="whitespace-pre-wrap text-xs leading-relaxed text-ink font-sans">{turn.content}</p>
+        <p className="whitespace-pre-wrap text-xs leading-relaxed text-ink font-sans">
+          {turn.content}
+        </p>
       </div>
     </div>
   );
@@ -386,7 +395,10 @@ function UserTurn({ turn }: { turn: ChatTurn }) {
 
 function PendingTurn({ phase }: { phase: 'retrieving' | 'answering' }) {
   return (
-    <div className="flex items-center gap-3 text-xs font-mono text-ink-muted p-3 bg-canvas-sunken rounded border border-edge" role="status">
+    <div
+      className="flex items-center gap-3 text-xs font-mono text-ink-muted p-3 bg-canvas-sunken rounded border border-edge"
+      role="status"
+    >
       <span className="flex gap-1" aria-hidden="true">
         {[0, 1, 2].map((index) => (
           <span
@@ -450,7 +462,9 @@ function EvidenceSummaryPanel({ evidence }: { evidence: EvidencePacket }) {
   return (
     <div className="rounded border border-edge bg-canvas-sunken p-3 space-y-2 font-mono text-xs">
       <div className="flex items-center justify-between border-b border-edge pb-2">
-        <span className="text-[10.5px] font-bold uppercase tracking-wider text-ink-faint">RETRIEVAL METRICS</span>
+        <span className="text-[10.5px] font-bold uppercase tracking-wider text-ink-faint">
+          RETRIEVAL METRICS
+        </span>
         <span className="text-teal font-semibold text-[11px]">{evidence.confidenceLabel}</span>
       </div>
       <div className="grid grid-cols-2 gap-2 text-[11px]">
@@ -554,12 +568,15 @@ function AssistantTurn({
             <span>NO APPROVED EVIDENCE FOUND</span>
           </div>
           <p className="text-[11px] font-sans text-ink-muted leading-relaxed">
-            Atlas could not find enough approved evidence to answer this reliably. Select an action below:
+            Atlas could not find enough approved evidence to answer this reliably. Select an action
+            below:
           </p>
           <div className="flex flex-wrap gap-2 pt-1">
             <button
               type="button"
-              onClick={() => onAskRelated?.('What are the official policies related to this request?')}
+              onClick={() =>
+                onAskRelated?.('What are the official policies related to this request?')
+              }
               className="px-2.5 py-1 text-[11px] rounded border border-edge bg-canvas-sunken text-ink hover:border-accent hover:text-accent transition"
             >
               Refine Question

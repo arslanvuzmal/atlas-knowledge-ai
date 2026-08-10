@@ -23,27 +23,39 @@ export default async function CompanyDetailPage({ params }: { params: Promise<{ 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <Panel className="p-4">
           <div className="text-xs text-ink-faint">Industry</div>
-          <div className="text-lg font-semibold text-ink mt-1">{company.industry || 'Unspecified'}</div>
+          <div className="text-lg font-semibold text-ink mt-1">
+            {company.industry || 'Unspecified'}
+          </div>
         </Panel>
         <Panel className="p-4">
           <div className="text-xs text-ink-faint">Employee Range</div>
-          <div className="text-lg font-semibold text-ink mt-1">{company.employeeRange || 'Unspecified'}</div>
+          <div className="text-lg font-semibold text-ink mt-1">
+            {company.employeeRange || 'Unspecified'}
+          </div>
         </Panel>
         <Panel className="p-4">
           <div className="text-xs text-ink-faint">Lifecycle</div>
           <div className="text-lg font-semibold text-ink mt-1">
-            <Badge tone={company.lifecycle === 'CUSTOMER' ? 'good' : 'neutral'}>{company.lifecycle}</Badge>
+            <Badge tone={company.lifecycle === 'CUSTOMER' ? 'good' : 'neutral'}>
+              {company.lifecycle}
+            </Badge>
           </div>
         </Panel>
       </div>
 
       <Panel className="p-5">
-        <PanelHeader title="Associated Contacts" description={`${company.contacts.length} team members at ${company.name}`} />
+        <PanelHeader
+          title="Associated Contacts"
+          description={`${company.contacts.length} team members at ${company.name}`}
+        />
         <DataTable headers={['Name', 'Email', 'Lifecycle', 'Lead Score', 'Last Activity']}>
           {company.contacts.map((c) => (
             <tr key={c.id}>
               <Cell className="font-semibold text-ink">
-                <Link href={`/dashboard/contacts/${c.id}`} className="hover:underline hover:text-accent">
+                <Link
+                  href={`/dashboard/contacts/${c.id}`}
+                  className="hover:underline hover:text-accent"
+                >
                   {c.displayName}
                 </Link>
               </Cell>

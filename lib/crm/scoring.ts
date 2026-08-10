@@ -114,7 +114,13 @@ export async function calculateLeadScore(
   // 4. Timing
   if (intel?.timeline) {
     const lowerTl = intel.timeline.toLowerCase();
-    if (lowerTl.includes('next month') || lowerTl.includes('immediate') || lowerTl.includes('asap') || lowerTl.includes('q1') || lowerTl.includes('q2')) {
+    if (
+      lowerTl.includes('next month') ||
+      lowerTl.includes('immediate') ||
+      lowerTl.includes('asap') ||
+      lowerTl.includes('q1') ||
+      lowerTl.includes('q2')
+    ) {
       factors.push({
         category: 'TIMING',
         factor: `Deployment timeline specified: ${intel.timeline}`,

@@ -22,14 +22,18 @@ test.describe('Flagship Commercial Demo Journey — Maya Chen Acme Labs', () => 
     await expect(page.locator('body')).toContainText('30-day');
 
     // 3. Maya shares team size and timeline
-    await input.fill('We have about 80 users looking to deploy next month. Can you share security details and how to get started?');
+    await input.fill(
+      'We have about 80 users looking to deploy next month. Can you share security details and how to get started?',
+    );
     await input.press('Enter');
 
     // Wait for response
     await expect(page.getByText('Sources', { exact: true }).nth(1)).toBeVisible({ timeout: 15000 });
 
     // 4. Maya provides contact details and requests sales follow-up
-    await input.fill('Please have sales follow up with me. My name is Maya Chen, email maya@acme.example');
+    await input.fill(
+      'Please have sales follow up with me. My name is Maya Chen, email maya@acme.example',
+    );
     await input.press('Enter');
 
     await page.waitForTimeout(2000);

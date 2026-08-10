@@ -18,7 +18,16 @@ export function AtlasMark({ size = 28, className }: { size?: number; className?:
       className={cn('shrink-0', className)}
     >
       {/* Outer bounding frame */}
-      <rect x="1" y="1" width="30" height="30" rx="4" stroke="rgba(255,255,255,0.13)" strokeWidth="1.2" fill="#0D0F12" />
+      <rect
+        x="1"
+        y="1"
+        width="30"
+        height="30"
+        rx="4"
+        stroke="rgba(255,255,255,0.13)"
+        strokeWidth="1.2"
+        fill="#0D0F12"
+      />
       {/* Left structural line */}
       <path d="M9 23 L16 8" stroke="#7799D8" strokeWidth="2" strokeLinecap="round" />
       {/* Right structural line */}

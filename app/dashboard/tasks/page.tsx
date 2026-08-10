@@ -8,19 +8,20 @@ export default async function TasksPage() {
 
   return (
     <div>
-      <PageHeader
-        title="Tasks"
-        description={`${total} pending and completed follow-up actions.`}
-      />
+      <PageHeader title="Tasks" description={`${total} pending and completed follow-up actions.`} />
 
       <Panel className="p-0">
-        <DataTable headers={['Task Title', 'Type', 'Priority', 'Status', 'Contact', 'Company', 'Due Date']}>
+        <DataTable
+          headers={['Task Title', 'Type', 'Priority', 'Status', 'Contact', 'Company', 'Due Date']}
+        >
           {items.map((task) => (
             <tr key={task.id} className="hover:bg-canvas-overlay/50 transition-colors">
               <Cell className="font-semibold text-ink">{task.title}</Cell>
               <Cell>{task.type}</Cell>
               <Cell>
-                <Badge tone={task.priority === 'HIGH' ? 'warning' : 'neutral'}>{task.priority}</Badge>
+                <Badge tone={task.priority === 'HIGH' ? 'warning' : 'neutral'}>
+                  {task.priority}
+                </Badge>
               </Cell>
               <Cell>
                 <Badge tone={task.status === 'COMPLETED' ? 'good' : 'neutral'}>{task.status}</Badge>

@@ -23,11 +23,12 @@ export default async function DealsPage() {
     }),
   ]);
 
-  const stages = pipeline?.stages.map((st) => ({
-    id: st.id,
-    name: st.name,
-    order: st.order,
-  })) ?? [];
+  const stages =
+    pipeline?.stages.map((st) => ({
+      id: st.id,
+      name: st.name,
+      order: st.order,
+    })) ?? [];
 
   const formattedDeals = deals.map((d) => ({
     id: d.id,

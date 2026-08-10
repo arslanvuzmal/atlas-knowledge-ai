@@ -7,10 +7,9 @@ generator client {
 }
 
 datasource db {
-  provider   = "postgresql"
-  url        = env("DATABASE_URL")
-  directUrl  = env("DIRECT_URL")
-  extensions = [vector]
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
 }
 
 // ============================================================================
@@ -931,7 +930,7 @@ model DocumentChunk {
   metadata          Json?
   embeddingProvider String?
   embeddingModel    String?
-  embedding         Unsupported("vector(768)")?
+  embedding         Unsupported("vector")?
   createdAt         DateTime                  @default(now())
 
   document        Document        @relation(fields: [documentId], references: [id], onDelete: Cascade)

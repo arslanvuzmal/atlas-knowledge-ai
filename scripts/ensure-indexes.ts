@@ -26,11 +26,15 @@ export async function ensureRetrievalIndexes(): Promise<{ created: string[]; exi
   if (present.has('DocumentChunk_embedding_hnsw_idx')) {
     existing.push('DocumentChunk_embedding_hnsw_idx');
   } else {
-    await prisma.$executeRawUnsafe(
-      `CREATE INDEX IF NOT EXISTS "DocumentChunk_embedding_hnsw_idx"
-         ON "DocumentChunk" USING hnsw ("embedding" vector_cosine_ops)`,
-    );
-    created.push('DocumentChunk_embedding_hnsw_idx');
+    try {
+      await prisma.$executeRawUnsafe(
+        `CREATE INDEX IF NOT EXISTS "DocumentChunk_embedding_hnsw_idx"
+           ON "DocumentChunk" USING hnsw ("embedding" vector_cosine_ops)`,
+      );
+      created.push('DocumentChunk_embedding_hnsw_idx');
+    } catch {
+      // HNSW access method not present on standard Postgres
+    }
   }
 
   if (present.has('DocumentChunk_fts_idx')) {

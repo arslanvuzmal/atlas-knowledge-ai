@@ -60,7 +60,9 @@ export default async function KnowledgeHealthPage() {
         <Panel className="p-4 space-y-1">
           <span className="text-[10px] uppercase font-bold text-rust">UNSUPPORTED ESCALATIONS</span>
           <div className="text-2xl font-bold text-rust">{escalations.length}</div>
-          <p className="text-[10.5px] text-ink-muted">Unanswered questions requiring content creation</p>
+          <p className="text-[10.5px] text-ink-muted">
+            Unanswered questions requiring content creation
+          </p>
         </Panel>
       </div>
 
@@ -81,7 +83,9 @@ export default async function KnowledgeHealthPage() {
         >
           {escalations.map((esc) => (
             <tr key={esc.id} className="hover:bg-canvas-overlay/40 transition">
-              <Cell className="font-semibold text-ink max-w-xs truncate">{esc.summary || esc.reason}</Cell>
+              <Cell className="font-semibold text-ink max-w-xs truncate">
+                {esc.summary || esc.reason}
+              </Cell>
               <Cell>
                 <Badge tone="warning">Unsupported Evidence</Badge>
               </Cell>
@@ -103,11 +107,21 @@ export default async function KnowledgeHealthPage() {
           ))}
           {escalations.length === 0 ? (
             <tr>
-              <Cell className="text-xs text-ink-faint" align="left">No open knowledge gaps detected</Cell>
-              <Cell className="text-xs text-ink-faint" align="left">—</Cell>
-              <Cell className="text-xs text-ink-faint" align="left">—</Cell>
-              <Cell className="text-xs text-ink-faint" align="right">—</Cell>
-              <Cell className="text-xs text-ink-faint" align="right">—</Cell>
+              <Cell className="text-xs text-ink-faint" align="left">
+                No open knowledge gaps detected
+              </Cell>
+              <Cell className="text-xs text-ink-faint" align="left">
+                —
+              </Cell>
+              <Cell className="text-xs text-ink-faint" align="left">
+                —
+              </Cell>
+              <Cell className="text-xs text-ink-faint" align="right">
+                —
+              </Cell>
+              <Cell className="text-xs text-ink-faint" align="right">
+                —
+              </Cell>
             </tr>
           ) : null}
         </DataTable>
@@ -119,7 +133,9 @@ export default async function KnowledgeHealthPage() {
           title="Negative Feedback Log"
           description="User ratings and comments for correction loops"
         />
-        <DataTable headers={['Answer Context', 'User Comment', { label: 'Submitted', align: 'right' }]}>
+        <DataTable
+          headers={['Answer Context', 'User Comment', { label: 'Submitted', align: 'right' }]}
+        >
           {unhelpfulFeedback.map((fb) => (
             <tr key={fb.id}>
               <Cell className="font-sans text-xs text-ink max-w-sm truncate">
@@ -135,9 +151,15 @@ export default async function KnowledgeHealthPage() {
           ))}
           {unhelpfulFeedback.length === 0 ? (
             <tr>
-              <Cell className="text-xs text-ink-faint" align="left">No unhelpful ratings logged</Cell>
-              <Cell className="text-xs text-ink-faint" align="left">—</Cell>
-              <Cell className="text-xs text-ink-faint" align="right">—</Cell>
+              <Cell className="text-xs text-ink-faint" align="left">
+                No unhelpful ratings logged
+              </Cell>
+              <Cell className="text-xs text-ink-faint" align="left">
+                —
+              </Cell>
+              <Cell className="text-xs text-ink-faint" align="right">
+                —
+              </Cell>
             </tr>
           ) : null}
         </DataTable>

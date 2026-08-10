@@ -108,7 +108,6 @@ function detectConflicts(
   return detectMaterialConflicts(chunks, question);
 }
 
-
 function unsupportedAnswer(
   retrieval: RetrievalResult,
   role: Role,

@@ -31,5 +31,9 @@ export default async function EvaluationRunPageWrapper({ params }: Props) {
     return <div className="p-8 text-center text-ink-faint">Evaluation not found</div>;
   }
 
-  return <EvaluationRunPage evaluation={evaluation as unknown as Parameters<typeof EvaluationRunPage>[0]['evaluation']} />;
+  return (
+    <EvaluationRunPage
+      evaluation={evaluation as unknown as Parameters<typeof EvaluationRunPage>[0]['evaluation']}
+    />
+  );
 }

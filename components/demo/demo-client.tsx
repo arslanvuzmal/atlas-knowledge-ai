@@ -42,7 +42,12 @@ const ROLE_CARDS: RoleCard[] = [
   { role: 'PUBLIC', label: 'Public Visitor', reach: 'Public docs only', color: 'neutral' },
   { role: 'CUSTOMER', label: 'Customer', reach: 'Public + Customer', color: 'accent' },
   { role: 'EMPLOYEE', label: 'Employee', reach: 'Public + Customer + Employee', color: 'iris' },
-  { role: 'MANAGER', label: 'Manager', reach: 'Public + Customer + Employee + Manager', color: 'warning' },
+  {
+    role: 'MANAGER',
+    label: 'Manager',
+    reach: 'Public + Customer + Employee + Manager',
+    color: 'warning',
+  },
   { role: 'ADMIN', label: 'Admin', reach: 'All documents + configuration', color: 'good' },
 ];
 
@@ -73,7 +78,9 @@ export function DemoClient({ demoMode }: { demoMode: boolean }) {
       <div className="shrink-0 border-b border-edge bg-canvas-sunken px-4 py-3 sm:px-6">
         <div className="mx-auto max-w-7xl flex flex-wrap items-center justify-between gap-4">
           <div className="flex items-center gap-2">
-            <span className="font-mono text-[10.5px] font-bold text-ink-faint uppercase">DEMO_ACCESS_SIMULATION:</span>
+            <span className="font-mono text-[10.5px] font-bold text-ink-faint uppercase">
+              DEMO_ACCESS_SIMULATION:
+            </span>
             <div className="flex flex-wrap gap-1.5">
               {ROLE_CARDS.map((r) => (
                 <button
@@ -118,7 +125,9 @@ export function DemoClient({ demoMode }: { demoMode: boolean }) {
                         {section.restricted && <Badge tone="warning">Restricted</Badge>}
                         {section.unsupported && <Badge tone="critical">No Source</Badge>}
                       </div>
-                      <p className="text-[11px] text-ink-muted leading-tight font-sans">{section.description}</p>
+                      <p className="text-[11px] text-ink-muted leading-tight font-sans">
+                        {section.description}
+                      </p>
                       <div className="space-y-1 pt-1">
                         {section.questions.map((q, qIndex) => (
                           <button
@@ -143,10 +152,7 @@ export function DemoClient({ demoMode }: { demoMode: boolean }) {
 
               {/* Pipeline Inspector */}
               <Panel>
-                <PanelHeader
-                  title="Pipeline Metadata"
-                  description="Real-time Retrieval Trace"
-                />
+                <PanelHeader title="Pipeline Metadata" description="Real-time Retrieval Trace" />
                 <div className="p-3 space-y-2 font-mono text-[11px] text-ink-muted">
                   {pipelineMeta ? (
                     <div className="space-y-1.5 border-t border-edge-subtle pt-2">
@@ -168,7 +174,9 @@ export function DemoClient({ demoMode }: { demoMode: boolean }) {
                       </div>
                       <div className="flex justify-between">
                         <span className="text-ink-faint">Confidence:</span>
-                        <span className="text-ink font-bold">{(pipelineMeta.confidence.value * 100).toFixed(1)}%</span>
+                        <span className="text-ink font-bold">
+                          {(pipelineMeta.confidence.value * 100).toFixed(1)}%
+                        </span>
                       </div>
                       <div className="flex justify-between">
                         <span className="text-ink-faint">Grounding:</span>
@@ -180,7 +188,9 @@ export function DemoClient({ demoMode }: { demoMode: boolean }) {
                       </div>
                     </div>
                   ) : (
-                    <p className="text-[11px] text-ink-faint italic">Execute a scenario question to inspect real pipeline telemetry...</p>
+                    <p className="text-[11px] text-ink-faint italic">
+                      Execute a scenario question to inspect real pipeline telemetry...
+                    </p>
                   )}
                 </div>
               </Panel>
