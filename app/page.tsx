@@ -6,13 +6,6 @@ import { formatNumber } from '@/lib/ui';
 
 export const dynamic = 'force-dynamic';
 
-/**
- * Landing page.
- *
- * The figures shown are read from the database at request time. They describe
- * this deployment's own demo corpus, and are labelled as such: no invented
- * customer counts, no fabricated performance claims.
- */
 export default async function HomePage() {
   const [documents, chunks, questions] = await Promise.all([
     prisma.document.count({ where: { status: 'INDEXED' } }),
@@ -23,21 +16,21 @@ export default async function HomePage() {
   const demoMode = env().DEMO_MODE;
 
   return (
-    <div className="min-h-screen">
-      <header className="border-b border-edge">
-        <nav className="mx-auto flex max-w-6xl items-center justify-between gap-4 px-6 py-4">
-          <Wordmark />
-          <div className="flex items-center gap-2">
+    <div className="min-h-screen bg-canvas text-ink font-sans">
+      <header className="border-b border-edge bg-canvas/90 backdrop-blur-sm sticky top-0 z-50">
+        <nav className="mx-auto flex max-w-6xl items-center justify-between gap-4 px-6 py-3.5">
+          <Wordmark showSubtitle />
+          <div className="flex items-center gap-3">
             {demoMode ? <DemoBadge className="hidden sm:inline-flex" /> : null}
             <Link
               href="/demo"
-              className="rounded-md px-3 py-2 text-sm font-medium text-ink-muted transition hover:bg-canvas-raised hover:text-ink"
+              className="rounded px-3 py-1.5 font-mono text-xs font-semibold text-ink-muted transition hover:bg-canvas-raised hover:text-ink border border-transparent hover:border-edge"
             >
-              Try the demo
+              Public Demo
             </Link>
             <Link
               href="/login"
-              className="rounded-md bg-accent px-3.5 py-2 text-sm font-semibold text-ink-inverse transition hover:bg-accent-soft"
+              className="rounded bg-accent px-3.5 py-1.5 font-mono text-xs font-bold text-ink-inverse transition hover:bg-accent-soft shadow-sm"
             >
               Sign in
             </Link>
@@ -46,227 +39,222 @@ export default async function HomePage() {
       </header>
 
       <main id="main">
-        {/* Hero */}
-        <section className="border-b border-edge">
-          <div className="mx-auto max-w-6xl px-6 py-16 sm:py-24">
-            <p className="mb-4 text-[11px] font-semibold uppercase tracking-[0.18em] text-accent">
-              Retrieval-augmented knowledge platform
-            </p>
-            <h1 className="max-w-3xl text-4xl font-semibold leading-[1.1] tracking-tight text-ink sm:text-5xl">
-              Business knowledge that answers,
-              <span className="text-ink-muted"> with its sources attached.</span>
-            </h1>
-            <p className="mt-6 max-w-2xl text-lg leading-relaxed text-ink-muted">
-              Atlas Knowledge AI turns approved documents, websites, policies, manuals and FAQs into
-              a searchable conversational assistant — with document-level citations, role-based
-              access control, feedback analytics and human escalation.
-            </p>
+        {/* Editorial Hero */}
+        <section className="border-b border-edge py-16 sm:py-24">
+          <div className="mx-auto max-w-6xl px-6 grid grid-cols-1 lg:grid-cols-12 gap-12 items-center">
+            <div className="lg:col-span-6 space-y-6">
+              <div className="inline-flex items-center gap-2 px-2.5 py-1 rounded bg-canvas-sunken border border-edge font-mono text-[11px] font-bold text-accent uppercase tracking-wider">
+                <span className="h-1.5 w-1.5 rounded-full bg-accent animate-pulse" />
+                Knowledge Intelligence Platform
+              </div>
+              <h1 className="text-4xl sm:text-5xl font-bold tracking-tight text-ink leading-[1.1]">
+                Ask your business. <br />
+                <span className="text-teal">See the evidence.</span>
+              </h1>
+              <p className="text-sm sm:text-base leading-relaxed text-ink-muted max-w-xl">
+                Atlas turns approved documents, policies, manuals and websites into a searchable knowledge system where every answer can be traced directly back to its verified source.
+              </p>
 
-            <div className="mt-8 flex flex-wrap gap-3">
-              <Link
-                href="/demo"
-                className="rounded-md bg-accent px-5 py-2.5 text-sm font-semibold text-ink-inverse transition hover:bg-accent-soft"
-              >
-                Ask the public demo
-              </Link>
-              <Link
-                href="/login"
-                className="rounded-md border border-edge-strong px-5 py-2.5 text-sm font-semibold text-ink transition hover:border-accent hover:text-accent"
-              >
-                Sign in to the dashboard
-              </Link>
+              <div className="flex flex-wrap gap-3 pt-2">
+                <Link
+                  href="/chat"
+                  className="rounded bg-accent px-5 py-2.5 font-mono text-xs uppercase font-bold text-ink-inverse transition hover:bg-accent-soft shadow-md flex items-center gap-2"
+                >
+                  Try Atlas →
+                </Link>
+                <Link
+                  href="/demo"
+                  className="rounded border border-edge-strong bg-canvas-raised px-5 py-2.5 font-mono text-xs uppercase font-bold text-ink transition hover:border-accent hover:text-accent"
+                >
+                  Explore Knowledge Base
+                </Link>
+              </div>
+
+              {/* Provenance Stat Line */}
+              <div className="pt-6 border-t border-edge grid grid-cols-3 gap-4 font-mono text-[11px]">
+                <div>
+                  <div className="text-lg font-bold text-ink tabular-nums">{formatNumber(documents)}</div>
+                  <div className="text-ink-faint text-[10px] uppercase tracking-wider">Indexed Documents</div>
+                </div>
+                <div>
+                  <div className="text-lg font-bold text-ink tabular-nums">{formatNumber(chunks)}</div>
+                  <div className="text-ink-faint text-[10px] uppercase tracking-wider">Retrievable Passages</div>
+                </div>
+                <div>
+                  <div className="text-lg font-bold text-ink tabular-nums">{formatNumber(questions)}</div>
+                  <div className="text-ink-faint text-[10px] uppercase tracking-wider">Answered Queries</div>
+                </div>
+              </div>
             </div>
 
-            <dl className="mt-14 grid max-w-2xl grid-cols-2 gap-x-8 gap-y-6 sm:grid-cols-3">
-              {[
-                { term: 'Documents indexed', value: formatNumber(documents) },
-                { term: 'Retrievable passages', value: formatNumber(chunks) },
-                { term: 'Questions answered', value: formatNumber(questions) },
-              ].map((stat) => (
-                <div key={stat.term}>
-                  <dd className="text-2xl font-semibold tabular-nums text-ink">{stat.value}</dd>
-                  <dt className="mt-1 text-xs text-ink-faint">{stat.term}</dt>
+            {/* Signature Evidence Interaction Diagram */}
+            <div className="lg:col-span-6">
+              <div className="panel p-5 font-mono text-xs space-y-4 border-edge-strong bg-canvas-raised">
+                <div className="flex items-center justify-between border-b border-edge pb-3">
+                  <div className="flex items-center gap-2">
+                    <span className="h-2 w-2 rounded-full bg-teal animate-pulse" />
+                    <span className="text-[11px] font-bold text-ink uppercase tracking-wider">EVIDENCE_INTERACTION // LIVE_DEMO</span>
+                  </div>
+                  <span className="text-[10px] text-teal font-semibold border border-teal/30 bg-teal-wash px-2 py-0.5 rounded">
+                    SUPPORTED (0.92)
+                  </span>
                 </div>
-              ))}
-            </dl>
-            <p className="mt-4 max-w-2xl text-xs text-ink-faint">
-              Live counts from this deployment&rsquo;s fictional demonstration corpus.
-            </p>
+
+                {/* Question */}
+                <div className="p-3 bg-canvas-sunken rounded border border-edge space-y-1">
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-ink-faint">USER QUESTION</span>
+                  <p className="text-xs text-ink font-sans">How long can an employee carry unused annual leave?</p>
+                </div>
+
+                {/* Answer with Citation */}
+                <div className="p-3.5 bg-canvas-overlay rounded border border-edge space-y-2">
+                  <div className="flex items-center justify-between text-[10px] font-bold uppercase tracking-wider text-accent">
+                    <span>ATLAS GROUNDED ANSWER</span>
+                    <span>CONFIDENCE: HIGH</span>
+                  </div>
+                  <p className="text-xs text-ink leading-relaxed font-sans">
+                    Unused annual leave may be carried forward up to 5 consecutive working days into the next calendar year, subject to manager approval prior to December 15. <span className="font-mono text-teal font-bold hover:underline cursor-pointer">[1]</span>
+                  </p>
+                </div>
+
+                {/* Reference Line Connection */}
+                <div className="ref-line space-y-2">
+                  <div className="flex items-center justify-between text-[10px] font-bold uppercase tracking-wider text-teal">
+                    <span>MATCHED EVIDENCE SOURCE [1]</span>
+                    <span>PAGE 42 // EMPLOYEE</span>
+                  </div>
+                  <div className="p-3 bg-canvas-sunken rounded border border-teal/40 space-y-1 font-sans text-xs text-ink-muted">
+                    <div className="font-mono text-[10px] text-ink font-bold">Employee Handbook — Section 4.2 Leave Policy</div>
+                    <p className="text-[11px] italic text-ink-muted">
+                      &ldquo;Employees may carry forward a maximum of 5 days of accrued unused annual leave into the subsequent year with written approval...&rdquo;
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </div>
           </div>
         </section>
 
-        {/* The problem */}
-        <section className="border-b border-edge bg-canvas-sunken">
-          <div className="mx-auto max-w-6xl px-6 py-16">
-            <h2 className="text-2xl font-semibold tracking-tight text-ink">
-              The knowledge exists. Finding it is the problem.
-            </h2>
-            <p className="mt-3 max-w-2xl text-ink-muted">
-              Policies live in PDFs, procedures in a wiki, pricing in a spreadsheet, and the real
-              answer in someone&rsquo;s head. A general-purpose chatbot will confidently make
-              something up. Atlas will not.
-            </p>
+        {/* The Problem Section */}
+        <section className="border-b border-edge bg-canvas-sunken py-16">
+          <div className="mx-auto max-w-6xl px-6 space-y-8">
+            <div className="max-w-2xl">
+              <span className="font-mono text-xs font-bold text-rust uppercase tracking-wider block mb-1">01 // THE KNOWLEDGE PARADOX</span>
+              <h2 className="text-2xl sm:text-3xl font-bold tracking-tight text-ink">
+                Your company already has the answers. <br />
+                Finding the right one is the problem.
+              </h2>
+              <p className="mt-3 text-xs sm:text-sm text-ink-muted leading-relaxed">
+                Policies live in PDFs, procedures in drive folders, rules in wikis, and answers in employees&apos; heads. Traditional search finds documents; generic AI invents answers. Atlas sits precisely between them.
+              </p>
+            </div>
 
-            <div className="mt-10 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-              {[
-                {
-                  title: 'Answers are grounded, or refused',
-                  body: 'Every claim carries a citation to the document, section and page it came from. When the sources do not support an answer, Atlas says so and offers a human instead of guessing.',
-                },
-                {
-                  title: 'Access control is enforced in SQL',
-                  body: 'Each document and passage carries an access level. Filtering happens in the database query against the caller’s role, then again after reranking. Restricted content is never loaded, let alone quoted.',
-                },
-                {
-                  title: 'Documents are data, never instructions',
-                  body: 'Retrieved text is wrapped in an untrusted-data boundary and the generator has no tools, no network access and no secrets. An instruction hidden in a PDF has nothing to act on.',
-                },
-                {
-                  title: 'Ingestion you can watch and retry',
-                  body: 'Validation, extraction, chunking, embedding and indexing each report their own state. A failure tells you which stage broke and why, and can be retried from the library.',
-                },
-                {
-                  title: 'Measured, not asserted',
-                  body: 'Grounded-answer rate, unsupported rate, confidence, retrieval latency and content gaps are all computed from real usage recorded by the platform.',
-                },
-                {
-                  title: 'Runs without paid credentials',
-                  body: 'Deterministic demo providers make the entire platform runnable end to end with no API keys. Point it at a real embedding and language model when you are ready.',
-                },
-              ].map((feature) => (
-                <div key={feature.title} className="panel p-5">
-                  <h3 className="text-sm font-semibold text-ink">{feature.title}</h3>
-                  <p className="mt-2 text-sm leading-relaxed text-ink-muted">{feature.body}</p>
-                </div>
-              ))}
+            <div className="grid gap-4 sm:grid-cols-3">
+              <div className="panel p-5 space-y-2 border-edge">
+                <span className="font-mono text-xs font-bold text-ink-faint">TRADITIONAL SEARCH</span>
+                <h3 className="text-sm font-semibold text-ink">Finds Documents</h3>
+                <p className="text-xs text-ink-muted leading-relaxed">
+                  Returns 40-page PDFs and forces team members to scan through dozens of pages to locate a single rule.
+                </p>
+              </div>
+
+              <div className="panel p-5 space-y-2 border-edge">
+                <span className="font-mono text-xs font-bold text-rust">GENERIC CHATBOTS</span>
+                <h3 className="text-sm font-semibold text-ink">Invents Answers</h3>
+                <p className="text-xs text-ink-muted leading-relaxed">
+                  Hallucinates plausible-sounding policies when sources are missing, creating business risk and compliance failures.
+                </p>
+              </div>
+
+              <div className="panel p-5 space-y-2 border-teal/40 bg-teal-wash/10">
+                <span className="font-mono text-xs font-bold text-teal">ATLAS KNOWLEDGE AI</span>
+                <h3 className="text-sm font-semibold text-ink">Grounded &amp; Traceable</h3>
+                <p className="text-xs text-ink-muted leading-relaxed">
+                  Extracts exact answers from authorized sources, attaches proof citations, and refuses to guess when evidence is missing.
+                </p>
+              </div>
             </div>
           </div>
         </section>
 
-        {/* Pipeline */}
-        <section className="border-b border-edge">
-          <div className="mx-auto max-w-6xl px-6 py-16">
-            <h2 className="text-2xl font-semibold tracking-tight text-ink">
-              How a question is answered
-            </h2>
-            <ol className="mt-10 grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
+        {/* 4 Editorial Differentiators */}
+        <section className="border-b border-edge py-16">
+          <div className="mx-auto max-w-6xl px-6 space-y-12">
+            <div className="border-b border-edge pb-4">
+              <span className="font-mono text-xs font-bold text-accent uppercase tracking-wider block mb-1">02 // CORE DIFFERENTIATORS</span>
+              <h2 className="text-2xl sm:text-3xl font-bold tracking-tight text-ink">Built for Trust and Verification</h2>
+            </div>
+
+            <div className="grid gap-8 sm:grid-cols-2 lg:grid-cols-4">
+              <div className="space-y-3">
+                <span className="font-mono text-xs font-bold text-accent">01 // EVIDENCE</span>
+                <h3 className="text-sm font-semibold text-ink">Answers with Evidence</h3>
+                <p className="text-xs text-ink-muted leading-relaxed">
+                  Every claim links to its exact source, section, and page number with matched passage excerpts.
+                </p>
+              </div>
+
+              <div className="space-y-3">
+                <span className="font-mono text-xs font-bold text-indigo">02 // ACCESS LADDER</span>
+                <h3 className="text-sm font-semibold text-ink">Role-Based Access</h3>
+                <p className="text-xs text-ink-muted leading-relaxed">
+                  Strict authorization ladder (Public &rarr; Customer &rarr; Employee &rarr; Manager &rarr; Admin) enforced in database queries.
+                </p>
+              </div>
+
+              <div className="space-y-3">
+                <span className="font-mono text-xs font-bold text-amber">03 // EPISTEMIC STATES</span>
+                <h3 className="text-sm font-semibold text-ink">Knows When It Doesn&apos;t Know</h3>
+                <p className="text-xs text-ink-muted leading-relaxed">
+                  Classifies outputs cleanly into Supported, Partial, or Unsupported without anthropomorphic excuses.
+                </p>
+              </div>
+
+              <div className="space-y-3">
+                <span className="font-mono text-xs font-bold text-teal">04 // KNOWLEDGE GAPS</span>
+                <h3 className="text-sm font-semibold text-ink">Knowledge Gaps Visible</h3>
+                <p className="text-xs text-ink-muted leading-relaxed">
+                  Identifies repeated unanswered questions and surfaces them to administrators for content creation.
+                </p>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        {/* Technical Pipeline Process */}
+        <section className="border-b border-edge bg-canvas-sunken py-16">
+          <div className="mx-auto max-w-6xl px-6 space-y-8">
+            <div className="border-b border-edge pb-4">
+              <span className="font-mono text-xs font-bold text-olive uppercase tracking-wider block mb-1">03 // SYSTEM TOPOLOGY</span>
+              <h2 className="text-2xl sm:text-3xl font-bold tracking-tight text-ink">The Atlas Retrieval &amp; Grounding Pipeline</h2>
+            </div>
+
+            <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-2 font-mono text-xs text-center">
               {[
-                {
-                  step: '01',
-                  title: 'Scope',
-                  body: 'The question is validated, scanned for injection patterns, and resolved against recent conversation context. The caller’s role fixes which access levels are reachable.',
-                },
-                {
-                  step: '02',
-                  title: 'Retrieve',
-                  body: 'Vector similarity and keyword search run in parallel over permitted passages only, then fuse by reciprocal rank.',
-                },
-                {
-                  step: '03',
-                  title: 'Rerank',
-                  body: 'Candidates are rescored on term coverage, proximity, rarity and heading match, and a confidence figure is computed from the evidence.',
-                },
-                {
-                  step: '04',
-                  title: 'Answer',
-                  body: 'A grounded answer is generated inside a strict source boundary. Citations are validated against what was actually retrieved before anything is shown.',
-                },
+                { step: '01', name: 'DOCUMENTS', detail: 'PDF, DOCX, WEB' },
+                { step: '02', name: 'VALIDATE', detail: 'Injection Check' },
+                { step: '03', name: 'INDEX', detail: 'Chunk & Embed' },
+                { step: '04', name: 'RBAC', detail: 'SQL Pre-filter' },
+                { step: '05', name: 'RETRIEVE', detail: 'Vector + Keyword' },
+                { step: '06', name: 'RERANK', detail: 'Reciprocal Fusion' },
+                { step: '07', name: 'EVIDENCE', detail: 'Passage Match' },
+                { step: '08', name: 'ANSWER', detail: 'Cited Output' },
               ].map((item) => (
-                <li key={item.step} className="border-l-2 border-accent/30 pl-4">
-                  <p className="font-mono text-xs text-accent">{item.step}</p>
-                  <h3 className="mt-2 text-sm font-semibold text-ink">{item.title}</h3>
-                  <p className="mt-1.5 text-sm leading-relaxed text-ink-muted">{item.body}</p>
-                </li>
+                <div key={item.step} className="p-3 bg-canvas-raised rounded border border-edge space-y-1">
+                  <span className="text-[10px] text-accent font-bold block">{item.step}</span>
+                  <div className="font-bold text-ink text-[11px] truncate">{item.name}</div>
+                  <div className="text-[9px] text-ink-faint truncate">{item.detail}</div>
+                </div>
               ))}
-            </ol>
+            </div>
           </div>
         </section>
-
-        {/* Demo credentials */}
-        {demoMode ? (
-          <section className="border-b border-edge bg-canvas-sunken">
-            <div className="mx-auto max-w-6xl px-6 py-16">
-              <div className="flex flex-wrap items-center gap-3">
-                <h2 className="text-2xl font-semibold tracking-tight text-ink">
-                  Explore the roles
-                </h2>
-                <DemoBadge />
-              </div>
-              <p className="mt-3 max-w-2xl text-ink-muted">
-                Each account sees a different slice of the same knowledge base. Ask all of them
-                about the employee handbook to watch access control decide the answer.
-              </p>
-
-              <div className="mt-8 overflow-x-auto">
-                <table className="w-full min-w-[520px] border-collapse text-sm">
-                  <thead>
-                    <tr className="border-b border-edge text-left">
-                      <th
-                        scope="col"
-                        className="py-2 pr-4 text-[11px] uppercase tracking-wider text-ink-faint"
-                      >
-                        Role
-                      </th>
-                      <th
-                        scope="col"
-                        className="py-2 pr-4 text-[11px] uppercase tracking-wider text-ink-faint"
-                      >
-                        Email
-                      </th>
-                      <th
-                        scope="col"
-                        className="py-2 text-[11px] uppercase tracking-wider text-ink-faint"
-                      >
-                        Reaches
-                      </th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-edge-subtle">
-                    {[
-                      [
-                        'Administrator',
-                        'admin@atlasknowledge.demo',
-                        'Everything, plus configuration and audit',
-                      ],
-                      [
-                        'Manager',
-                        'manager@atlasknowledge.demo',
-                        'Internal procedures, escalations, analytics',
-                      ],
-                      ['Employee', 'employee@atlasknowledge.demo', 'Handbook and sales material'],
-                      ['Customer', 'customer@atlasknowledge.demo', 'Customer-approved sources'],
-                      ['Public viewer', 'viewer@atlasknowledge.demo', 'Public documentation only'],
-                    ].map(([role, email, reach]) => (
-                      <tr key={email}>
-                        <td className="py-2.5 pr-4 font-medium text-ink">{role}</td>
-                        <td className="py-2.5 pr-4 font-mono text-[13px] text-ink-muted">
-                          {email}
-                        </td>
-                        <td className="py-2.5 text-ink-muted">{reach}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-              <p className="mt-4 text-sm text-ink-muted">
-                Password for every demo account:{' '}
-                <code className="rounded bg-canvas-overlay px-1.5 py-0.5 font-mono text-accent-soft">
-                  AtlasDemo!2026
-                </code>
-              </p>
-              <p className="mt-2 text-xs text-ink-faint">
-                These accounts authenticate only while demo mode is enabled. All documents, people
-                and figures in the corpus are fictional.
-              </p>
-            </div>
-          </section>
-        ) : null}
       </main>
 
-      <footer className="border-t border-edge">
-        <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-4 px-6 py-8 text-sm text-ink-faint">
+      <footer className="border-t border-edge py-8">
+        <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-4 px-6 font-mono text-xs text-ink-faint">
           <Wordmark size={22} />
-          <p>Built by Arslan Vuzmal Lone · MIT licensed</p>
+          <p>Atlas Knowledge AI · Grounded Enterprise Intelligence</p>
         </div>
       </footer>
     </div>

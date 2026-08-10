@@ -1,17 +1,13 @@
 import type { Config } from 'tailwindcss';
 
 /**
- * Atlas design tokens.
+ * Atlas design system tokens matching the precise design DNA of arslanvuzmallone.com:
  *
- * The chart-facing colours are not chosen by eye. `series.*`, `status.*`, and
- * the `scale.*` ramp were generated in OKLCH and verified with a colour
- * validator against the #171923 chart surface. All five checks pass on the
- * three-slot categorical set: lightness band (L 0.48-0.67), chroma floor,
- * colour-vision-deficiency separation (worst adjacent deutan dE 17.4, well
- * above the 8.0 floor), normal-vision separation, and 3:1 contrast.
- *
- * The product commits to a single dark appearance rather than shipping an
- * unvalidated light theme. See docs/DESIGN_SYSTEM.md.
+ * - Dark, academic, research-desk aesthetic
+ * - Deep dark background (#08090B) with structured surfaces (#0D0F12, #111419, #15191E)
+ * - Ultra-clean borders (rgba(255,255,255,0.075) & rgba(255,255,255,0.13))
+ * - Restrained cold steel blue (#7799D8) and desaturated teal evidence accent (#73B5AF)
+ * - Precision radii (4px, 6px, 8px, 10px, max 12px) - zero exaggerated bubbles
  */
 
 const config: Config = {
@@ -20,85 +16,99 @@ const config: Config = {
     extend: {
       colors: {
         canvas: {
-          DEFAULT: '#12141c',
-          raised: '#171923',
-          sunken: '#0d0f16',
-          overlay: '#1c1f2b',
-          hover: '#20243173',
+          DEFAULT: '#08090B',
+          raised: '#0D0F12',
+          sunken: '#111419',
+          overlay: '#15191E',
+          hover: 'rgba(255, 255, 255, 0.03)',
         },
         edge: {
-          DEFAULT: '#242836',
-          strong: '#333a4d',
-          subtle: '#1d2130',
+          DEFAULT: 'rgba(255, 255, 255, 0.075)',
+          strong: 'rgba(255, 255, 255, 0.13)',
+          subtle: 'rgba(255, 255, 255, 0.04)',
         },
         ink: {
-          DEFAULT: '#e6e9f2',
-          muted: '#a8b0c8',
-          faint: '#7d879f',
-          inverse: '#0d0f16',
+          DEFAULT: '#F5F6F7',
+          muted: '#A6ADB7',
+          faint: '#747D89',
+          inverse: '#08090B',
         },
-        // Brand accent. Doubles as chart series 1.
+        // Restrained steel blue brand accent
         accent: {
-          DEFAULT: '#00a3c3',
-          soft: '#57c8e6',
-          deep: '#00647a',
-          wash: 'rgba(0, 163, 195, 0.14)',
-          line: 'rgba(0, 163, 195, 0.32)',
+          DEFAULT: '#7799D8',
+          soft: '#A3BDF0',
+          deep: '#4A69A8',
+          wash: 'rgba(119, 153, 216, 0.12)',
+          line: 'rgba(119, 153, 216, 0.25)',
+        },
+        // Evidence desaturated teal accent
+        teal: {
+          DEFAULT: '#73B5AF',
+          soft: '#A1D6D1',
+          deep: '#4C8782',
+          wash: 'rgba(115, 181, 175, 0.12)',
+          line: 'rgba(115, 181, 175, 0.25)',
+        },
+        rust: {
+          DEFAULT: '#D06A4A',
+          wash: 'rgba(208, 106, 74, 0.12)',
+        },
+        amber: {
+          DEFAULT: '#D8A84E',
+          wash: 'rgba(216, 168, 78, 0.12)',
+        },
+        olive: {
+          DEFAULT: '#7E8B68',
+          wash: 'rgba(126, 139, 104, 0.12)',
+        },
+        indigo: {
+          DEFAULT: '#7277A8',
+          wash: 'rgba(114, 119, 168, 0.12)',
         },
         iris: {
-          DEFAULT: '#5a58c2',
-          soft: '#9391dd',
-          deep: '#3b3a86',
-          wash: 'rgba(90, 88, 194, 0.16)',
+          DEFAULT: '#7277A8',
+          soft: '#A3A7D6',
+          deep: '#484C7A',
+          wash: 'rgba(114, 119, 168, 0.12)',
         },
-        // Validated categorical order. Never cycle past slot 3: fold into
-        // "Other" or use small multiples instead.
         series: {
-          1: '#00a3c3',
-          2: '#5a58c2',
-          3: '#429c5a',
+          1: '#7799D8',
+          2: '#73B5AF',
+          3: '#7E8B68',
         },
-        // Reserved for state. Never reused as a chart series colour, and always
-        // paired with an icon or text label so state is never colour-alone.
         status: {
-          good: '#4fa866',
-          warning: '#bd871c',
-          critical: '#cd5f5f',
-          info: '#00a3c3',
-          neutral: '#7d879f',
-        },
-        // Single-hue sequential ramp for magnitude, light to dark.
-        scale: {
-          1: '#57c8e6',
-          2: '#38afcc',
-          3: '#0995b2',
-          4: '#007d99',
-          5: '#006580',
+          good: '#7E8B68',
+          warning: '#D8A84E',
+          critical: '#D06A4A',
+          info: '#7799D8',
+          neutral: '#747D89',
         },
       },
       fontFamily: {
-        sans: ['var(--font-sans)', 'ui-sans-serif', 'system-ui', 'sans-serif'],
-        mono: ['var(--font-mono)', 'ui-monospace', 'SFMono-Regular', 'Menlo', 'monospace'],
+        sans: ['var(--font-sans)', 'Inter', 'Geist', 'ui-sans-serif', 'system-ui', 'sans-serif'],
+        mono: ['var(--font-mono)', 'JetBrains Mono', 'ui-monospace', 'SFMono-Regular', 'Menlo', 'monospace'],
       },
       borderRadius: {
-        panel: '14px',
+        sm: '4px',
+        DEFAULT: '6px',
+        md: '6px',
+        lg: '8px',
+        xl: '10px',
+        panel: '8px',
       },
       boxShadow: {
-        panel: '0 1px 2px rgba(0,0,0,0.4), 0 8px 24px -14px rgba(0,0,0,0.7)',
-        lift: '0 14px 44px -18px rgba(0,0,0,0.8)',
-        focus: '0 0 0 2px #12141c, 0 0 0 4px #00a3c3',
+        panel: '0 1px 2px rgba(0,0,0,0.4), 0 8px 16px -12px rgba(0,0,0,0.6)',
+        lift: '0 12px 32px -16px rgba(0,0,0,0.8)',
+        focus: '0 0 0 2px #08090B, 0 0 0 4px #7799D8',
       },
       keyframes: {
         'fade-up': {
-          from: { opacity: '0', transform: 'translateY(6px)' },
+          from: { opacity: '0', transform: 'translateY(4px)' },
           to: { opacity: '1', transform: 'translateY(0)' },
         },
         'pulse-soft': {
           '0%, 100%': { opacity: '1' },
           '50%': { opacity: '0.4' },
-        },
-        shimmer: {
-          '100%': { transform: 'translateX(100%)' },
         },
       },
       animation: {

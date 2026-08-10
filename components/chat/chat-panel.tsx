@@ -23,16 +23,6 @@ import {
   type PipelineMetadata,
 } from './types';
 
-/**
- * The conversational surface.
- *
- * Four states are represented explicitly rather than collapsed into a single
- * spinner, because they mean different things to the user: retrieving,
- * answering, answered-but-unsupported, and failed. The unsupported state is a
- * first-class outcome with related sources and a route to a human, not an
- * error.
- */
-
 interface ChatPanelProps {
   mode: 'authenticated' | 'public';
   initialConversationId?: string | null;
@@ -61,6 +51,7 @@ export function ChatPanel({
   const [phase, setPhase] = useState<'idle' | 'retrieving' | 'answering'>('idle');
   const [conversationId, setConversationId] = useState<string | null>(initialConversationId);
   const [openCitation, setOpenCitation] = useState<Citation | null>(null);
+  const [hoveredCitationOrdinal, setHoveredCitationOrdinal] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const endRef = useRef<HTMLDivElement>(null);
@@ -95,8 +86,6 @@ export function ChatPanel({
       setTurns((current) => [...current, userTurn]);
 
       setPhase('retrieving');
-      // The two phases are genuinely sequential on the server; the timer only
-      // decides when the label switches, it does not fake progress.
       phaseTimer.current = setTimeout(() => setPhase('answering'), 550);
 
       const result = await apiFetch<ChatResponse>('/api/chat', {
@@ -150,7 +139,6 @@ export function ChatPanel({
     [conversationId, phase, onPipelineMeta],
   );
 
-  // Listen for demo page questions
   useEffect(() => {
     function handleDemoAsk(event: CustomEvent<{ question: string }>) {
       void send(event.detail.question);
@@ -165,7 +153,6 @@ export function ChatPanel({
   }
 
   function handleKeyDown(event: KeyboardEvent<HTMLTextAreaElement>) {
-    // Enter sends, Shift+Enter inserts a newline: the convention users expect.
     if (event.key === 'Enter' && !event.shiftKey) {
       event.preventDefault();
       void send(input);
@@ -173,96 +160,173 @@ export function ChatPanel({
   }
 
   const busy = phase !== 'idle';
+  const latestAssistantTurn = [...turns].reverse().find((t) => t.role === 'assistant' && !t.errored);
 
   return (
-    <div className="flex h-full min-h-0 flex-col">
-      <div className="flex flex-wrap items-center gap-2 border-b border-edge px-4 py-3 sm:px-6">
-        <Badge tone="accent">{roleLabel}</Badge>
-        <span className="text-xs text-ink-faint">{reachLabel}</span>
+    <div className="flex h-full min-h-0 flex-col bg-canvas">
+      {/* Top Scope Utility Header */}
+      <div className="flex flex-wrap items-center justify-between border-b border-edge bg-canvas-sunken/60 px-4 py-2.5 sm:px-6">
+        <div className="flex items-center gap-2">
+          <Badge tone="accent">{roleLabel}</Badge>
+          <span className="font-mono text-xs text-ink-faint">{reachLabel}</span>
+        </div>
         {demoMode ? (
-          <Badge tone="iris" className="ml-auto">
-            Demo providers
+          <Badge tone="iris">
+            DEMO_PROVIDERS
           </Badge>
         ) : null}
       </div>
 
-      <div
-        className="flex-1 overflow-y-auto px-4 py-6 sm:px-6"
-        role="log"
-        aria-live="polite"
-        aria-label="Conversation"
-      >
-        <div className="mx-auto flex max-w-3xl flex-col gap-6">
-          {turns.length === 0 ? (
-            <EmptyConversation
-              mode={mode}
-              suggestions={suggestions}
-              onPick={(question) => void send(question)}
-            />
-          ) : null}
+      {/* 62 / 38 Desktop Split Workspace */}
+      <div className="flex flex-1 min-h-0 flex-col lg:flex-row overflow-hidden">
+        {/* Left Column (62% Answer Workspace) */}
+        <div className="flex flex-1 min-h-0 flex-col border-b lg:border-b-0 lg:border-r border-edge">
+          <div
+            className="flex-1 overflow-y-auto px-4 py-6 sm:px-6"
+            role="log"
+            aria-live="polite"
+            aria-label="Conversation"
+          >
+            <div className="mx-auto flex max-w-2xl flex-col gap-6">
+              {turns.length === 0 ? (
+                <EmptyConversation
+                  mode={mode}
+                  suggestions={suggestions}
+                  onPick={(question) => void send(question)}
+                />
+              ) : null}
 
-          {turns.map((turn) =>
-            turn.role === 'user' ? (
-              <UserTurn key={turn.id} turn={turn} />
+              {turns.map((turn) =>
+                turn.role === 'user' ? (
+                  <UserTurn key={turn.id} turn={turn} />
+                ) : (
+                  <AssistantTurn
+                    key={turn.id}
+                    turn={turn}
+                    onOpenCitation={setOpenCitation}
+                    hoveredCitationOrdinal={hoveredCitationOrdinal}
+                    onHoverCitation={setHoveredCitationOrdinal}
+                    conversationId={conversationId}
+                    onAskRelated={(q) => void send(q)}
+                  />
+                ),
+              )}
+
+              {busy ? <PendingTurn phase={phase} /> : null}
+              <div ref={endRef} />
+            </div>
+          </div>
+
+          {/* Fixed Question Input Bar */}
+          <form
+            onSubmit={handleSubmit}
+            className="border-t border-edge bg-canvas-raised px-4 py-3 sm:px-6"
+          >
+            <div className="mx-auto max-w-2xl">
+              <label htmlFor="chat-input" className="sr-only">
+                Ask a question about your approved knowledge
+              </label>
+              <div className="flex items-end gap-2 rounded border border-edge bg-canvas-sunken p-2 focus-within:border-accent">
+                <textarea
+                  id="chat-input"
+                  ref={textareaRef}
+                  rows={1}
+                  value={input}
+                  maxLength={MAX_LENGTH}
+                  onChange={(event) => setInput(event.target.value)}
+                  onKeyDown={handleKeyDown}
+                  disabled={busy}
+                  placeholder="Ask a question about your approved knowledge…"
+                  className="max-h-36 min-h-[36px] flex-1 resize-y bg-transparent px-2 py-1.5 text-xs text-ink placeholder:text-ink-faint focus:outline-none disabled:opacity-60 font-sans"
+                />
+                <button
+                  type="submit"
+                  disabled={busy || input.trim().length === 0}
+                  className="shrink-0 rounded bg-accent px-3.5 py-1.5 font-mono text-xs font-bold text-ink-inverse transition hover:bg-accent-soft disabled:opacity-50"
+                >
+                  {busy ? 'Working…' : 'Ask'}
+                </button>
+              </div>
+
+              <div className="mt-1.5 flex flex-wrap items-center justify-between gap-2 font-mono text-[10.5px] text-ink-faint">
+                <span>Enter to send · Shift+Enter for newline</span>
+                <span className="tabular-nums">
+                  {input.length}/{MAX_LENGTH}
+                </span>
+              </div>
+
+              {error ? (
+                <p role="alert" className="mt-1.5 font-mono text-xs text-status-critical">
+                  {error}
+                </p>
+              ) : null}
+            </div>
+          </form>
+        </div>
+
+        {/* Right Column (38% Evidence Inspector Panel) */}
+        <aside className="w-full lg:w-[400px] shrink-0 bg-canvas-raised flex flex-col min-h-0 overflow-y-auto border-t lg:border-t-0 border-edge p-4 sm:p-5 space-y-4">
+          <div className="flex items-center justify-between border-b border-edge pb-3">
+            <div className="flex items-center gap-2">
+              <span className="h-2 w-2 rounded-full bg-teal animate-pulse" />
+              <h3 className="font-mono text-xs font-bold uppercase tracking-wider text-ink">EVIDENCE_PANEL</h3>
+            </div>
+            {latestAssistantTurn?.citations?.length ? (
+              <span className="font-mono text-[10.5px] text-teal font-semibold">
+                {latestAssistantTurn.citations.length} Sources Matched
+              </span>
             ) : (
-              <AssistantTurn
-                key={turn.id}
-                turn={turn}
-                onOpenCitation={setOpenCitation}
-                conversationId={conversationId}
-              />
-            ),
+              <span className="font-mono text-[10.5px] text-ink-faint">No Active Query</span>
+            )}
+          </div>
+
+          {latestAssistantTurn?.evidence ? (
+            <EvidenceSummaryPanel evidence={latestAssistantTurn.evidence} />
+          ) : (
+            <div className="p-4 rounded border border-edge-subtle bg-canvas-sunken/40 text-center font-mono text-xs text-ink-faint">
+              Ask a question to see real-time retrieved evidence passages &amp; citations.
+            </div>
           )}
 
-          {busy ? <PendingTurn phase={phase} /> : null}
-          <div ref={endRef} />
-        </div>
-      </div>
-
-      <form
-        onSubmit={handleSubmit}
-        className="border-t border-edge bg-canvas-raised px-4 py-4 sm:px-6"
-      >
-        <div className="mx-auto max-w-3xl">
-          <label htmlFor="chat-input" className="sr-only">
-            Ask a question
-          </label>
-          <div className="flex items-end gap-2 rounded-panel border border-edge bg-canvas-sunken p-2 focus-within:border-accent">
-            <textarea
-              id="chat-input"
-              ref={textareaRef}
-              rows={1}
-              value={input}
-              maxLength={MAX_LENGTH}
-              onChange={(event) => setInput(event.target.value)}
-              onKeyDown={handleKeyDown}
-              disabled={busy}
-              placeholder="Ask about the approved knowledge base…"
-              className="max-h-40 min-h-[40px] flex-1 resize-y bg-transparent px-2 py-2 text-sm text-ink placeholder:text-ink-faint focus:outline-none disabled:opacity-60"
-            />
-            <button
-              type="submit"
-              disabled={busy || input.trim().length === 0}
-              className="shrink-0 rounded-md bg-accent px-4 py-2 text-sm font-semibold text-ink-inverse transition hover:bg-accent-soft disabled:opacity-50"
-            >
-              {busy ? 'Working…' : 'Ask'}
-            </button>
-          </div>
-
-          <div className="mt-2 flex flex-wrap items-center justify-between gap-2 text-[11px] text-ink-faint">
-            <span>Enter to send · Shift+Enter for a new line</span>
-            <span className="tabular-nums">
-              {input.length}/{MAX_LENGTH}
-            </span>
-          </div>
-
-          {error ? (
-            <p role="alert" className="mt-2 text-xs text-status-critical">
-              {error}
-            </p>
+          {latestAssistantTurn?.citations && latestAssistantTurn.citations.length > 0 ? (
+            <div className="space-y-3">
+              <div className="flex items-center justify-between text-[10.5px] font-mono font-bold uppercase tracking-wider text-ink-faint">
+                <span>RETRIEVED CITATIONS</span>
+                <span>HOVER TO LINK</span>
+              </div>
+              <div className="space-y-2">
+                {latestAssistantTurn.citations.map((citation) => (
+                  <CitationCard
+                    key={citation.ordinal}
+                    citation={citation}
+                    onOpen={setOpenCitation}
+                    highlighted={hoveredCitationOrdinal === citation.ordinal}
+                    onHover={setHoveredCitationOrdinal}
+                  />
+                ))}
+              </div>
+            </div>
           ) : null}
-        </div>
-      </form>
+
+          {latestAssistantTurn?.relatedSources && latestAssistantTurn.relatedSources.length > 0 ? (
+            <div className="p-3 rounded border border-edge bg-canvas-sunken space-y-2">
+              <span className="font-mono text-[10.5px] font-bold uppercase tracking-wider text-ink-faint block">
+                RELATED APPROVED SOURCES
+              </span>
+              <ul className="space-y-1.5 text-xs text-ink-muted">
+                {latestAssistantTurn.relatedSources.map((s) => (
+                  <li key={s.documentId} className="flex items-center justify-between truncate border-b border-edge-subtle pb-1">
+                    <span className="truncate text-ink font-medium">{s.title}</span>
+                    {s.sectionTitle ? (
+                      <span className="font-mono text-[10px] text-ink-faint shrink-0 ml-2">{s.sectionTitle}</span>
+                    ) : null}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ) : null}
+        </aside>
+      </div>
 
       <SourceDrawer citation={openCitation} onClose={() => setOpenCitation(null)} />
     </div>
@@ -279,29 +343,30 @@ function EmptyConversation({
   onPick: (question: string) => void;
 }) {
   return (
-    <div className="animate-fade-up">
-      <h2 className="text-lg font-semibold tracking-tight text-ink">
-        {mode === 'public'
-          ? 'Ask the Northstar Cloud knowledge base'
-          : 'What would you like to know?'}
-      </h2>
-      <p className="mt-2 max-w-xl text-sm leading-relaxed text-ink-muted">
-        Answers come only from approved sources you are permitted to see, and every claim carries a
-        citation. When the sources do not cover your question, Atlas will say so rather than guess.
-      </p>
+    <div className="animate-fade-up space-y-4">
+      <div>
+        <h2 className="text-base font-bold text-ink font-sans">
+          {mode === 'public'
+            ? 'Ask the Northstar Cloud Knowledge Base'
+            : 'Grounded Enterprise Knowledge Search'}
+        </h2>
+        <p className="mt-1 text-xs leading-relaxed text-ink-muted">
+          Answers are strictly derived from approved sources permitted under your role. Every claim carries an interactive source citation. When evidence is insufficient, Atlas refuses to guess.
+        </p>
+      </div>
 
-      <p className="mt-6 text-[11px] font-semibold uppercase tracking-wider text-ink-faint">
-        Try one of these
-      </p>
-      <div className="mt-3 grid gap-2 sm:grid-cols-2">
+      <span className="font-mono text-[10.5px] font-bold uppercase tracking-wider text-ink-faint block">
+        SUGGESTED VERIFIED QUESTIONS
+      </span>
+      <div className="grid gap-2 sm:grid-cols-2">
         {suggestions.map((suggestion) => (
           <button
             key={suggestion}
             type="button"
             onClick={() => onPick(suggestion)}
-            className="rounded-md border border-edge bg-canvas-raised px-3.5 py-2.5 text-left text-sm text-ink-muted transition hover:border-accent/50 hover:text-ink"
+            className="rounded border border-edge bg-canvas-raised p-3 text-left text-xs text-ink-muted transition hover:border-accent hover:text-ink font-sans"
           >
-            {suggestion}
+            &ldquo;{suggestion}&rdquo;
           </button>
         ))}
       </div>
@@ -312,8 +377,8 @@ function EmptyConversation({
 function UserTurn({ turn }: { turn: ChatTurn }) {
   return (
     <div className="flex justify-end">
-      <div className="max-w-[85%] rounded-panel rounded-br-sm bg-accent-wash px-4 py-3">
-        <p className="whitespace-pre-wrap text-sm leading-relaxed text-ink">{turn.content}</p>
+      <div className="max-w-[85%] rounded bg-canvas-overlay border border-edge-strong px-4 py-2.5">
+        <p className="whitespace-pre-wrap text-xs leading-relaxed text-ink font-sans">{turn.content}</p>
       </div>
     </div>
   );
@@ -321,23 +386,30 @@ function UserTurn({ turn }: { turn: ChatTurn }) {
 
 function PendingTurn({ phase }: { phase: 'retrieving' | 'answering' }) {
   return (
-    <div className="flex items-center gap-3 text-sm text-ink-muted" role="status">
+    <div className="flex items-center gap-3 text-xs font-mono text-ink-muted p-3 bg-canvas-sunken rounded border border-edge" role="status">
       <span className="flex gap-1" aria-hidden="true">
         {[0, 1, 2].map((index) => (
           <span
             key={index}
-            className="h-1.5 w-1.5 animate-pulse-soft rounded-full bg-accent"
+            className="h-1.5 w-1.5 animate-pulse rounded-full bg-accent"
             style={{ animationDelay: `${index * 160}ms` }}
           />
         ))}
       </span>
-      {phase === 'retrieving' ? 'Searching approved sources…' : 'Composing a grounded answer…'}
+      {phase === 'retrieving' ? 'RETRIEVING_PERMITTED_PASSAGES...' : 'COMPOSING_GROUNDED_ANSWER...'}
     </div>
   );
 }
 
-/** Renders the answer, turning [n] markers into visible citation references. */
-function AnswerBody({ content }: { content: string }) {
+function AnswerBody({
+  content,
+  hoveredOrdinal,
+  onHoverOrdinal,
+}: {
+  content: string;
+  hoveredOrdinal: number | null;
+  onHoverOrdinal: (ordinal: number | null) => void;
+}) {
   const paragraphs = content.split(/\n{2,}/);
 
   return (
@@ -347,12 +419,21 @@ function AnswerBody({ content }: { content: string }) {
           {paragraph.split(/(\[\d{1,2}\])/g).map((part, partIndex) => {
             const marker = /^\[(\d{1,2})\]$/.exec(part);
             if (!marker) return <span key={partIndex}>{part}</span>;
+            const ordinal = parseInt(marker[1], 10);
+            const isHovered = hoveredOrdinal === ordinal;
             return (
               <sup
                 key={partIndex}
-                className="mx-0.5 rounded bg-accent-wash px-1 py-0.5 font-mono text-[10px] font-semibold text-accent-soft"
+                onMouseEnter={() => onHoverOrdinal(ordinal)}
+                onMouseLeave={() => onHoverOrdinal(null)}
+                className={cn(
+                  'mx-0.5 cursor-pointer rounded px-1 py-0.5 font-mono text-[10px] font-bold transition-all duration-150',
+                  isHovered
+                    ? 'bg-teal text-ink-inverse scale-110 shadow-sm'
+                    : 'bg-accent-wash text-accent-soft border border-accent/30 hover:border-accent',
+                )}
               >
-                {marker[1]}
+                [{ordinal}]
               </sup>
             );
           })}
@@ -362,67 +443,36 @@ function AnswerBody({ content }: { content: string }) {
   );
 }
 
-function EvidencePanel({ evidence }: { evidence: EvidencePacket }) {
+function EvidenceSummaryPanel({ evidence }: { evidence: EvidencePacket }) {
   const conflict = evidence.conflictDetected;
   const conflictDocs = evidence.conflictingDocuments;
 
   return (
-    <div className="mt-5 rounded-md border border-edge bg-canvas-sunken p-3">
-      <div className="flex flex-wrap items-start gap-3">
-        <div className="flex-1 min-w-0">
-          <p className="text-[11px] font-semibold uppercase tracking-wider text-ink-faint">
-            Evidence
-          </p>
-          <div className="mt-1.5 flex flex-wrap items-center gap-2 text-sm text-ink-muted">
-            <span className="rounded-full bg-accent-wash px-2 py-0.5 font-mono text-[11px] text-accent-soft">
-              {evidence.confidenceLabel}
-            </span>
-            <span className="text-ink-faint">·</span>
-            <span>
-              {evidence.supportingPassages} passage{evidence.supportingPassages !== 1 ? 's' : ''}
-            </span>
-            <span className="text-ink-faint">·</span>
-            <span>
-              {evidence.supportingDocuments} document{evidence.supportingDocuments !== 1 ? 's' : ''}
-            </span>
-            <span className="text-ink-faint">·</span>
-            <span>{Math.round(evidence.coverage * 100)}% question coverage</span>
-          </div>
-          {conflict && conflictDocs.length > 0 ? (
-            <div className="mt-3 p-3 rounded-md border border-status-warning/40 bg-status-warning/10">
-              <p className="text-sm font-medium text-status-warning flex items-center gap-1.5">
-                <svg width="14" height="14" viewBox="0 0 20 20" fill="none" aria-hidden="true">
-                  <path
-                    d="M10 2a8 8 0 100 16 8 8 0 000-16zM10 6v6m0 4v.01"
-                    stroke="currentColor"
-                    strokeWidth="1.5"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  />
-                </svg>
-                Conflicting approved sources detected
-              </p>
-              <p className="mt-1.5 text-xs text-ink-muted">
-                Multiple approved documents appear to contain contradictory information on this
-                topic. A human should review before relying on this answer.
-              </p>
-              <ul className="mt-2 space-y-1">
-                {conflictDocs.map((doc, index) => (
-                  <li
-                    key={doc.documentId}
-                    className="text-xs text-ink-muted flex items-start gap-1.5"
-                  >
-                    <span className="font-mono text-status-warning">{index + 1}.</span>
-                    <span className="font-medium">{doc.title}</span>
-                    <span className="text-ink-faint">—</span>
-                    <span className="line-clamp-1">{doc.excerpt}</span>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          ) : null}
+    <div className="rounded border border-edge bg-canvas-sunken p-3 space-y-2 font-mono text-xs">
+      <div className="flex items-center justify-between border-b border-edge pb-2">
+        <span className="text-[10.5px] font-bold uppercase tracking-wider text-ink-faint">RETRIEVAL METRICS</span>
+        <span className="text-teal font-semibold text-[11px]">{evidence.confidenceLabel}</span>
+      </div>
+      <div className="grid grid-cols-2 gap-2 text-[11px]">
+        <div className="p-1.5 bg-canvas-raised rounded border border-edge-subtle">
+          <div className="text-[9.5px] text-ink-faint uppercase">Passages</div>
+          <div className="font-bold text-ink">{evidence.supportingPassages}</div>
+        </div>
+        <div className="p-1.5 bg-canvas-raised rounded border border-edge-subtle">
+          <div className="text-[9.5px] text-ink-faint uppercase">Coverage</div>
+          <div className="font-bold text-ink">{Math.round(evidence.coverage * 100)}%</div>
         </div>
       </div>
+      {conflict && conflictDocs.length > 0 ? (
+        <div className="mt-2 p-2.5 rounded border border-status-warning/40 bg-status-warning/10 space-y-1">
+          <p className="text-xs font-bold text-status-warning flex items-center gap-1.5">
+            ⚠️ Material Source Conflict Detected
+          </p>
+          <p className="text-[11px] text-ink-muted leading-relaxed font-sans">
+            Multiple approved documents contain contradictory claims on this topic.
+          </p>
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -430,16 +480,22 @@ function EvidencePanel({ evidence }: { evidence: EvidencePacket }) {
 function AssistantTurn({
   turn,
   onOpenCitation,
+  hoveredCitationOrdinal,
+  onHoverCitation,
   conversationId,
+  onAskRelated,
 }: {
   turn: ChatTurn;
   onOpenCitation: (citation: Citation) => void;
+  hoveredCitationOrdinal: number | null;
+  onHoverCitation: (ordinal: number | null) => void;
   conversationId: string | null;
+  onAskRelated?: (question: string) => void;
 }) {
   if (turn.errored) {
     return (
-      <div className="rounded-panel border border-status-critical/40 bg-status-critical/10 px-4 py-3">
-        <p className="text-sm text-status-critical">{turn.content}</p>
+      <div className="rounded border border-status-critical/40 bg-status-critical/10 p-3 font-mono text-xs text-status-critical">
+        {turn.content}
       </div>
     );
   }
@@ -448,68 +504,75 @@ function AssistantTurn({
   const unsupported = turn.grounding === 'UNSUPPORTED';
 
   return (
-    <article className="animate-fade-up rounded-panel border border-edge bg-canvas-raised">
-      <div className="flex flex-wrap items-center gap-3 border-b border-edge-subtle px-4 py-2.5">
-        {meta ? (
-          <Badge tone={meta.tone} title={meta.description}>
-            {meta.label}
-          </Badge>
-        ) : null}
-        {typeof turn.confidence === 'number' ? (
-          <ConfidenceMeter value={turn.confidence} threshold={0.65} compact />
-        ) : null}
-        {turn.isDemo ? (
-          <span
-            className="ml-auto text-[11px] text-ink-faint"
-            title={`${turn.provider}/${turn.model}`}
-          >
-            Demo generator
-          </span>
-        ) : null}
-      </div>
-
-      <div className="px-4 py-4">
-        <AnswerBody content={turn.content} />
-
-        {turn.evidence && <EvidencePanel evidence={turn.evidence} />}
-
-        {turn.citations && turn.citations.length > 0 ? (
-          <div className="mt-5">
-            <p className="mb-2.5 text-[11px] font-semibold uppercase tracking-wider text-ink-faint">
-              Sources
-            </p>
-            <div className="grid gap-2 sm:grid-cols-2">
-              {turn.citations.map((citation) => (
-                <CitationCard key={citation.ordinal} citation={citation} onOpen={onOpenCitation} />
-              ))}
-            </div>
-          </div>
-        ) : null}
-
-        {unsupported && turn.relatedSources && turn.relatedSources.length > 0 ? (
-          <div className="mt-5 rounded-md border border-edge bg-canvas-sunken p-3">
-            <p className="text-[11px] font-semibold uppercase tracking-wider text-ink-faint">
-              Related approved sources
-            </p>
-            <ul className="mt-2 space-y-1 text-sm text-ink-muted">
-              {turn.relatedSources.map((source) => (
-                <li key={source.documentId}>
-                  {source.title}
-                  {source.sectionTitle ? (
-                    <span className="text-ink-faint"> · {source.sectionTitle}</span>
-                  ) : null}
-                </li>
-              ))}
-            </ul>
-          </div>
-        ) : null}
-
-        <div className={cn('mt-4 flex flex-wrap items-start justify-between gap-3')}>
-          <EscalationButton conversationId={conversationId} />
+    <article className="animate-fade-up rounded border border-edge bg-canvas-raised space-y-3 p-4">
+      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-edge pb-2.5">
+        <div className="flex items-center gap-2">
+          {meta ? (
+            <Badge tone={meta.tone} title={meta.description}>
+              {meta.label}
+            </Badge>
+          ) : null}
+          {typeof turn.confidence === 'number' ? (
+            <ConfidenceMeter value={turn.confidence} threshold={0.65} compact />
+          ) : null}
         </div>
-
-        <FeedbackControls messageId={turn.id} answerText={turn.content} />
+        {turn.isDemo ? (
+          <span className="font-mono text-[10px] text-ink-faint uppercase">DEMO_GENERATOR</span>
+        ) : null}
       </div>
+
+      <AnswerBody
+        content={turn.content}
+        hoveredOrdinal={hoveredCitationOrdinal}
+        onHoverOrdinal={onHoverCitation}
+      />
+
+      {turn.citations && turn.citations.length > 0 ? (
+        <div className="pt-2 border-t border-edge space-y-2">
+          <span className="font-mono text-[10px] font-bold uppercase tracking-wider text-ink-faint block">
+            CITED EVIDENCE SOURCES
+          </span>
+          <div className="grid gap-2 sm:grid-cols-2">
+            {turn.citations.map((c) => (
+              <CitationCard
+                key={c.ordinal}
+                citation={c}
+                onOpen={onOpenCitation}
+                compact
+                highlighted={hoveredCitationOrdinal === c.ordinal}
+                onHover={onHoverCitation}
+              />
+            ))}
+          </div>
+        </div>
+      ) : null}
+
+      {/* Restrained Epistemic Action Bar for Unsupported Queries */}
+      {unsupported ? (
+        <div className="p-3 rounded border border-amber/30 bg-amber-wash/10 space-y-2 font-mono text-xs">
+          <div className="flex items-center gap-1.5 font-bold text-amber">
+            <span>NO APPROVED EVIDENCE FOUND</span>
+          </div>
+          <p className="text-[11px] font-sans text-ink-muted leading-relaxed">
+            Atlas could not find enough approved evidence to answer this reliably. Select an action below:
+          </p>
+          <div className="flex flex-wrap gap-2 pt-1">
+            <button
+              type="button"
+              onClick={() => onAskRelated?.('What are the official policies related to this request?')}
+              className="px-2.5 py-1 text-[11px] rounded border border-edge bg-canvas-sunken text-ink hover:border-accent hover:text-accent transition"
+            >
+              Refine Question
+            </button>
+            <EscalationButton conversationId={conversationId} />
+          </div>
+        </div>
+      ) : (
+        <div className="flex flex-wrap items-center justify-between gap-3 border-t border-edge pt-3">
+          <EscalationButton conversationId={conversationId} />
+          <FeedbackControls messageId={turn.id} answerText={turn.content} />
+        </div>
+      )}
     </article>
   );
 }

@@ -17,6 +17,7 @@ export interface Citation {
   pageNumber: number | null;
   excerpt: string;
   relevanceScore: number;
+  accessLevel?: string;
 }
 
 export interface RelatedSource {

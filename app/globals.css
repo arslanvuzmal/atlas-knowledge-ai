@@ -3,8 +3,8 @@
 @tailwind utilities;
 
 :root {
-  --font-sans: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
-  --font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  --font-sans: 'Inter', 'Geist', ui-sans-serif, system-ui, -apple-system, sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
   color-scheme: dark;
 }
 
@@ -15,6 +15,7 @@
 
   html {
     -webkit-text-size-adjust: 100%;
+    background-color: theme('colors.canvas.DEFAULT');
   }
 
   body {
@@ -25,8 +26,6 @@
     text-rendering: optimizeLegibility;
   }
 
-  /* A visible, high-contrast focus ring on every interactive element. Focus is
-     never removed, only replaced with something better than the default. */
   :focus-visible {
     outline: 2px solid theme('colors.accent.DEFAULT');
     outline-offset: 2px;
@@ -39,22 +38,21 @@
   }
 
   ::-webkit-scrollbar {
-    width: 10px;
-    height: 10px;
+    width: 8px;
+    height: 8px;
   }
   ::-webkit-scrollbar-track {
     background: theme('colors.canvas.sunken');
   }
   ::-webkit-scrollbar-thumb {
     background: theme('colors.edge.strong');
-    border-radius: 6px;
+    border-radius: 4px;
     border: 2px solid theme('colors.canvas.sunken');
   }
   ::-webkit-scrollbar-thumb:hover {
     background: theme('colors.ink.faint');
   }
 
-  /* Respect a user's reduced-motion preference rather than animating anyway. */
   @media (prefers-reduced-motion: reduce) {
     *,
     *::before,
@@ -72,7 +70,7 @@
     @apply sr-only;
   }
   .skip-link:focus {
-    @apply not-sr-only fixed left-4 top-4 z-50 rounded-md bg-accent px-4 py-2 font-medium text-ink-inverse;
+    @apply not-sr-only fixed left-4 top-4 z-50 rounded bg-accent px-4 py-2 font-medium text-ink-inverse;
   }
 
   .panel {
@@ -80,32 +78,44 @@
   }
 
   .field {
-    @apply w-full rounded-md border border-edge bg-canvas-sunken px-3 py-2 text-sm text-ink
+    @apply w-full rounded border border-edge bg-canvas-sunken px-3 py-2 text-sm text-ink
            placeholder:text-ink-faint focus:border-accent focus:outline-none
            focus-visible:outline-2 focus-visible:outline-accent disabled:opacity-50;
   }
 
   .prose-answer {
-    @apply text-[15px] leading-relaxed text-ink;
+    @apply text-[14.5px] leading-relaxed text-ink;
   }
   .prose-answer p + p {
     @apply mt-3;
   }
   .prose-answer ul {
-    @apply mt-3 list-disc space-y-1 pl-5;
+    @apply mt-3 list-disc space-y-1.5 pl-5;
   }
   .prose-answer ol {
-    @apply mt-3 list-decimal space-y-1 pl-5;
+    @apply mt-3 list-decimal space-y-1.5 pl-5;
   }
   .prose-answer strong {
     @apply font-semibold text-ink;
   }
   .prose-answer code {
-    @apply rounded bg-canvas-sunken px-1 py-0.5 font-mono text-[13px] text-accent-soft;
+    @apply rounded bg-canvas-sunken px-1.5 py-0.5 font-mono text-[12.5px] text-accent-soft border border-edge-subtle;
+  }
+
+  /* Atlas Signature Reference Line styling */
+  .ref-line {
+    @apply relative pl-4 border-l border-accent/40 transition-colors duration-200;
+  }
+  .ref-line:hover {
+    @apply border-accent;
+  }
+
+  .evidence-highlight {
+    @apply bg-teal-wash/60 border-l-2 border-teal text-ink transition-all duration-150;
   }
 
   .animate-slide-in {
-    animation: slideIn 200ms ease-out;
+    animation: slideIn 180ms ease-out;
   }
 
   @keyframes slideIn {
@@ -120,15 +130,13 @@
   }
 }
 
-/* Chart primitives shared by every inline SVG chart. Grid and axis lines stay
-   recessive so the data marks carry the attention. */
 .chart-grid line {
   stroke: theme('colors.edge.subtle');
   stroke-width: 1;
 }
 .chart-axis-label {
   fill: theme('colors.ink.faint');
-  font-size: 11px;
+  font-size: 10.5px;
   font-family: var(--font-mono);
 }
 .chart-mark {

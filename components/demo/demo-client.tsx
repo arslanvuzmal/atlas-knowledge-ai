@@ -10,7 +10,7 @@ import type { PipelineMetadata } from '@/components/chat/types';
 const SCENARIO_QUESTIONS = [
   {
     phase: 'Public documentation',
-    description: 'These questions are answerable from public sources.',
+    description: 'Answerable from public sources.',
     questions: [
       'What is the refund window for an annual subscription?',
       'How much does the Team plan cost per user?',
@@ -19,14 +19,13 @@ const SCENARIO_QUESTIONS = [
   },
   {
     phase: 'Access control challenge',
-    description:
-      'This question is deliberately restricted — public visitors cannot see the answer.',
+    description: 'Restricted — public visitors receive Unsupported/Restricted.',
     questions: ['How many days of annual leave do employees receive?'],
     restricted: true,
   },
   {
     phase: 'Unsupported / not in corpus',
-    description: 'The knowledge base does not cover this topic.',
+    description: 'Demonstrates honest refusal when evidence is missing.',
     questions: ['Do you offer a native mobile app?', 'Why did my Flow stop running?'],
     unsupported: true,
   },
@@ -40,33 +39,29 @@ type RoleCard = {
 };
 
 const ROLE_CARDS: RoleCard[] = [
-  { role: 'PUBLIC', label: 'Public visitor', reach: 'Public docs only', color: 'neutral' },
+  { role: 'PUBLIC', label: 'Public Visitor', reach: 'Public docs only', color: 'neutral' },
   { role: 'CUSTOMER', label: 'Customer', reach: 'Public + Customer', color: 'accent' },
   { role: 'EMPLOYEE', label: 'Employee', reach: 'Public + Customer + Employee', color: 'iris' },
-  {
-    role: 'MANAGER',
-    label: 'Manager',
-    reach: 'Public + Customer + Employee + Manager',
-    color: 'warning',
-  },
-  { role: 'ADMIN', label: 'Admin', reach: 'All documents + config', color: 'good' },
+  { role: 'MANAGER', label: 'Manager', reach: 'Public + Customer + Employee + Manager', color: 'warning' },
+  { role: 'ADMIN', label: 'Admin', reach: 'All documents + configuration', color: 'good' },
 ];
 
 export function DemoClient({ demoMode }: { demoMode: boolean }) {
   const [pipelineMeta, setPipelineMeta] = useState<PipelineMetadata | null>(null);
+  const [activeRole, setActiveRole] = useState<RoleCard>(ROLE_CARDS[0]);
 
   return (
-    <div className="flex h-screen flex-col">
-      <header className="shrink-0 border-b border-edge">
-        <div className="mx-auto flex max-w-6xl items-center justify-between gap-4 px-4 py-3 sm:px-6">
-          <Link href="/" className="rounded-md">
-            <Wordmark size={24} />
+    <div className="flex h-screen flex-col bg-canvas text-ink font-sans">
+      <header className="shrink-0 border-b border-edge bg-canvas/90">
+        <div className="mx-auto flex max-w-7xl items-center justify-between gap-4 px-4 py-3 sm:px-6">
+          <Link href="/" className="rounded">
+            <Wordmark showSubtitle />
           </Link>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-3">
             {demoMode ? <DemoBadge className="hidden sm:inline-flex" /> : null}
             <Link
               href="/login"
-              className="rounded-md border border-edge-strong px-3 py-1.5 text-sm font-medium text-ink transition hover:border-accent hover:text-accent"
+              className="rounded bg-accent px-3 py-1.5 font-mono text-xs font-bold text-ink-inverse transition hover:bg-accent-soft shadow-sm"
             >
               Sign in
             </Link>
@@ -74,87 +69,62 @@ export function DemoClient({ demoMode }: { demoMode: boolean }) {
         </div>
       </header>
 
+      {/* Role Access Ladder Switcher */}
       <div className="shrink-0 border-b border-edge bg-canvas-sunken px-4 py-3 sm:px-6">
-        <div className="mx-auto max-w-6xl space-y-3">
-          <p className="text-xs text-ink-muted">
-            You are browsing anonymously as a <strong className="text-ink">Public visitor</strong> —
-            only <strong className="text-ink">public</strong> sources are reachable. Try the
-            questions below to see Atlas in action.
-          </p>
-
-          {/* Pipeline explanation */}
-          <Panel>
-            <PanelHeader
-              title="How Atlas answers"
-              description="The pipeline that runs for every question"
-            />
-            <div className="flex flex-wrap items-center gap-2 text-sm">
-              <Badge tone="accent">1. Understand question</Badge>
-              <span className="text-ink-faint">→</span>
-              <Badge tone="accent">2. Apply access policy</Badge>
-              <span className="text-ink-faint">→</span>
-              <Badge tone="accent">3. Retrieve evidence</Badge>
-              <span className="text-ink-faint">→</span>
-              <Badge tone="accent">4. Rerank passages</Badge>
-              <span className="text-ink-faint">→</span>
-              <Badge tone="accent">5. Evaluate evidence</Badge>
-              <span className="text-ink-faint">→</span>
-              <Badge tone="accent">6. Answer or refuse</Badge>
-            </div>
-          </Panel>
-
-          {/* Role comparison */}
-          <Panel>
-            <PanelHeader
-              title="Role-based access"
-              description="Same corpus, different permissions"
-            />
-            <div className="flex flex-wrap gap-2">
+        <div className="mx-auto max-w-7xl flex flex-wrap items-center justify-between gap-4">
+          <div className="flex items-center gap-2">
+            <span className="font-mono text-[10.5px] font-bold text-ink-faint uppercase">DEMO_ACCESS_SIMULATION:</span>
+            <div className="flex flex-wrap gap-1.5">
               {ROLE_CARDS.map((r) => (
-                <Badge key={r.role} tone={r.color} title={r.reach}>
+                <button
+                  key={r.role}
+                  type="button"
+                  onClick={() => setActiveRole(r)}
+                  className={`px-2.5 py-1 rounded font-mono text-xs font-semibold transition ${
+                    activeRole.role === r.role
+                      ? 'bg-accent text-ink-inverse shadow-sm'
+                      : 'bg-canvas-raised border border-edge text-ink-muted hover:text-ink hover:border-accent/40'
+                  }`}
+                  title={r.reach}
+                >
                   {r.label}
-                </Badge>
+                </button>
               ))}
             </div>
-          </Panel>
+          </div>
+          <span className="font-mono text-[11px] text-teal font-semibold hidden lg:inline-block">
+            REACH: {activeRole.reach}
+          </span>
         </div>
       </div>
 
       <main id="main" className="min-h-0 flex-1">
-        <div className="mx-auto max-w-6xl h-full px-4 py-4 sm:px-6">
-          <div className="h-full grid lg:grid-cols-4 gap-4">
-            {/* Scenario sidebar */}
-            <aside className="lg:col-span-1 space-y-4">
+        <div className="mx-auto max-w-7xl h-full p-4 sm:p-6">
+          <div className="h-full grid lg:grid-cols-12 gap-4">
+            {/* Scenario Sidebar (3 cols) */}
+            <aside className="lg:col-span-3 space-y-4 overflow-y-auto pr-1">
               <Panel>
                 <PanelHeader
-                  title="Try these questions"
-                  description="Organized by what they demonstrate"
+                  title="Scenario Questions"
+                  description="Test RBAC &amp; Epistemic Grounding"
                 />
-                <div className="space-y-4">
+                <div className="p-3 space-y-4">
                   {SCENARIO_QUESTIONS.map((section, sectionIndex) => (
-                    <div key={section.phase} className="space-y-2">
-                      <div className="flex items-center gap-2">
-                        <span className="text-[11px] font-semibold uppercase tracking-wider text-ink-faint">
+                    <div key={section.phase} className="space-y-1.5">
+                      <div className="flex items-center justify-between">
+                        <span className="font-mono text-[10px] font-bold uppercase tracking-wider text-ink-faint">
                           {section.phase}
                         </span>
-                        {section.restricted && (
-                          <Badge tone="warning" className="text-[10px]">
-                            Restricted
-                          </Badge>
-                        )}
-                        {section.unsupported && (
-                          <Badge tone="critical" className="text-[10px]">
-                            Not in corpus
-                          </Badge>
-                        )}
+                        {section.restricted && <Badge tone="warning">Restricted</Badge>}
+                        {section.unsupported && <Badge tone="critical">No Source</Badge>}
                       </div>
-                      <p className="text-xs text-ink-muted">{section.description}</p>
-                      <div className="space-y-1.5">
+                      <p className="text-[11px] text-ink-muted leading-tight font-sans">{section.description}</p>
+                      <div className="space-y-1 pt-1">
                         {section.questions.map((q, qIndex) => (
                           <button
                             key={`${sectionIndex}-${qIndex}`}
                             type="button"
-                            className="w-full rounded-md border border-edge bg-canvas-raised px-3 py-2 text-left text-sm text-ink-muted transition hover:border-accent/50 hover:text-ink"
+                            className="w-full rounded border border-edge bg-canvas-raised p-2 text-left text-xs text-ink-muted transition hover:border-accent hover:text-ink font-sans"
                             onClick={() => {
                               const event = new CustomEvent('demo:ask', {
                                 detail: { question: q },
@@ -162,7 +132,7 @@ export function DemoClient({ demoMode }: { demoMode: boolean }) {
                               window.dispatchEvent(event);
                             }}
                           >
-                            {q}
+                            &ldquo;{q}&rdquo;
                           </button>
                         ))}
                       </div>
@@ -171,89 +141,58 @@ export function DemoClient({ demoMode }: { demoMode: boolean }) {
                 </div>
               </Panel>
 
-              {/* Pipeline status */}
+              {/* Pipeline Inspector */}
               <Panel>
                 <PanelHeader
-                  title="Pipeline status"
-                  description="Live metadata from the last answer"
+                  title="Pipeline Metadata"
+                  description="Real-time Retrieval Trace"
                 />
-                <div id="pipeline-status" className="space-y-2 text-sm text-ink-muted font-mono">
+                <div className="p-3 space-y-2 font-mono text-[11px] text-ink-muted">
                   {pipelineMeta ? (
-                    <>
-                      <div className="grid gap-1">
-                        <div className="flex justify-between">
-                          <span className="text-ink-faint">Access levels:</span>
-                          <span>{pipelineMeta.accessLevels.join(', ')}</span>
-                        </div>
-                        <div className="flex justify-between">
-                          <span className="text-ink-faint">Vector candidates:</span>
-                          <span>{pipelineMeta.retrieval.vectorCandidates}</span>
-                        </div>
-                        <div className="flex justify-between">
-                          <span className="text-ink-faint">Keyword candidates:</span>
-                          <span>{pipelineMeta.retrieval.keywordCandidates}</span>
-                        </div>
-                        <div className="flex justify-between">
-                          <span className="text-ink-faint">After access filter:</span>
-                          <span>{pipelineMeta.retrieval.afterAccessFilter}</span>
-                        </div>
-                        <div className="flex justify-between">
-                          <span className="text-ink-faint">Reranked:</span>
-                          <span>{pipelineMeta.retrieval.rerankedCount}</span>
-                        </div>
-                        <div className="flex justify-between">
-                          <span className="text-ink-faint">Retrieval latency:</span>
-                          <span>{pipelineMeta.retrieval.latencyMs} ms</span>
-                        </div>
-                        <div className="flex justify-between">
-                          <span className="text-ink-faint">Confidence:</span>
-                          <span>
-                            {(pipelineMeta.confidence.value * 100).toFixed(1)}% (
-                            {pipelineMeta.confidence.label})
-                          </span>
-                        </div>
-                        <div className="flex justify-between">
-                          <span className="text-ink-faint">Coverage:</span>
-                          <span>{(pipelineMeta.confidence.coverage * 100).toFixed(1)}%</span>
-                        </div>
-                        <div className="flex justify-between">
-                          <span className="text-ink-faint">Grounding:</span>
-                          <span className="capitalize">
-                            {pipelineMeta.grounding.toLowerCase().replace('_', ' ')}
-                          </span>
-                        </div>
-                        <div className="flex justify-between">
-                          <span className="text-ink-faint">Provider:</span>
-                          <span>
-                            {pipelineMeta.answer.provider} / {pipelineMeta.answer.model}
-                          </span>
-                        </div>
-                        <div className="flex justify-between">
-                          <span className="text-ink-faint">Citations:</span>
-                          <span>{pipelineMeta.answer.citationCount}</span>
-                        </div>
-                        <div className="flex justify-between">
-                          <span className="text-ink-faint">Trace ID:</span>
-                          <span className="font-mono text-[10px]">
-                            {pipelineMeta.traceId.slice(0, 8)}…
-                          </span>
-                        </div>
+                    <div className="space-y-1.5 border-t border-edge-subtle pt-2">
+                      <div className="flex justify-between">
+                        <span className="text-ink-faint">Access Levels:</span>
+                        <span className="text-accent">{pipelineMeta.accessLevels.join(', ')}</span>
                       </div>
-                    </>
+                      <div className="flex justify-between">
+                        <span className="text-ink-faint">Vector Matches:</span>
+                        <span className="text-ink">{pipelineMeta.retrieval.vectorCandidates}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-ink-faint">Keyword Matches:</span>
+                        <span className="text-ink">{pipelineMeta.retrieval.keywordCandidates}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-ink-faint">Latency:</span>
+                        <span className="text-teal">{pipelineMeta.retrieval.latencyMs} ms</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-ink-faint">Confidence:</span>
+                        <span className="text-ink font-bold">{(pipelineMeta.confidence.value * 100).toFixed(1)}%</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-ink-faint">Grounding:</span>
+                        <span className="text-accent uppercase">{pipelineMeta.grounding}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-ink-faint">Citations:</span>
+                        <span className="text-ink">{pipelineMeta.answer.citationCount}</span>
+                      </div>
+                    </div>
                   ) : (
-                    <p>Ask a question to see pipeline metadata...</p>
+                    <p className="text-[11px] text-ink-faint italic">Execute a scenario question to inspect real pipeline telemetry...</p>
                   )}
                 </div>
               </Panel>
             </aside>
 
-            {/* Chat panel */}
-            <div className="lg:col-span-3 min-w-0">
+            {/* Chat Panel (9 cols) */}
+            <div className="lg:col-span-9 min-w-0 h-full">
               <ChatPanel
                 mode="public"
                 suggestions={SCENARIO_QUESTIONS.flatMap((s) => s.questions)}
-                roleLabel="Public visitor"
-                reachLabel="Reaches public documentation only"
+                roleLabel={activeRole.label}
+                reachLabel={activeRole.reach}
                 demoMode={demoMode}
                 onPipelineMeta={setPipelineMeta}
               />
