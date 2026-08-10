@@ -10,7 +10,7 @@ import { logger, newCorrelationId } from '@/lib/observability/logger';
 import { detectIntent, getConversationalResponse } from './intent';
 import { resolveIdentity } from '@/lib/crm/contact';
 import { enqueueOutboxEvent, processOutboxEvents } from '@/lib/outbox/worker';
-import { ensureDemoDataSeeded } from '@/lib/database/auto-seed';
+import { ensureDatabaseSchemaPatched, ensureDemoDataSeeded } from '@/lib/database/auto-seed';
 
 /**
  * Chat orchestration and persistence.
@@ -88,6 +88,7 @@ async function resolveConversation(input: AskInput): Promise<{ id: string; isNew
 }
 
 export async function ask(input: AskInput): Promise<AskOutput> {
+  await ensureDatabaseSchemaPatched();
   const traceId = newCorrelationId();
   const log = logger.child({ traceId, role: input.role });
   const startedAt = Date.now();
