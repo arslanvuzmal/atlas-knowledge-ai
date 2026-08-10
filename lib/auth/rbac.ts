@@ -91,6 +91,23 @@ export const PERMISSIONS = [
   'evaluation:read',
   'evaluation:manage',
   'settings:retention:manage',
+  'crm:contact:read',
+  'crm:contact:write',
+  'crm:company:read',
+  'crm:company:write',
+  'crm:deal:read',
+  'crm:deal:write',
+  'crm:task:read',
+  'crm:task:write',
+  'crm:ticket:read',
+  'crm:ticket:write',
+  'crm:activity:read',
+  'inbox:read',
+  'inbox:reply',
+  'inbox:assign',
+  'crm:export',
+  'automation:read',
+  'automation:manage',
 ] as const;
 
 export type Permission = (typeof PERMISSIONS)[number];
@@ -108,6 +125,13 @@ const EMPLOYEE_PERMISSIONS: Permission[] = [
   ...CUSTOMER_PERMISSIONS,
   'document:read',
   'knowledgebase:read',
+  'crm:contact:read',
+  'crm:company:read',
+  'crm:deal:read',
+  'crm:task:read',
+  'crm:ticket:read',
+  'crm:activity:read',
+  'inbox:read',
 ];
 
 const MANAGER_PERMISSIONS: Permission[] = [
@@ -128,6 +152,16 @@ const MANAGER_PERMISSIONS: Permission[] = [
   'health:read',
   'evaluation:read',
   'evaluation:manage',
+  'crm:contact:write',
+  'crm:company:write',
+  'crm:deal:write',
+  'crm:task:write',
+  'crm:ticket:write',
+  'inbox:reply',
+  'inbox:assign',
+  'crm:export',
+  'automation:read',
+  'automation:manage',
 ];
 
 const ADMIN_PERMISSIONS: Permission[] = [...PERMISSIONS];

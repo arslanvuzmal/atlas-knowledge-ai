@@ -1,10 +1,12 @@
-import { getOrCreateDefaultWorkspace } from '@/lib/workspace/context';
+import { getCurrentWorkspaceContext } from '@/lib/workspace/context';
 import { listCompanies } from '@/lib/crm/company';
 import { PageHeader, Panel, DataTable, Cell, Badge } from '@/components/ui/primitives';
 import Link from 'next/link';
+import { notFound } from 'next/navigation';
 
 export default async function CompaniesPage() {
-  const workspace = await getOrCreateDefaultWorkspace();
+  const workspace = await getCurrentWorkspaceContext();
+  if (!workspace) notFound();
   const { items, total } = await listCompanies(workspace.id, { limit: 100 });
 
   return (

@@ -1,10 +1,12 @@
-import { getOrCreateDefaultWorkspace } from '@/lib/workspace/context';
+import { getCurrentWorkspaceContext } from '@/lib/workspace/context';
 import { prisma } from '@/lib/database/client';
 import { PageHeader } from '@/components/ui/primitives';
 import { DealsView } from '@/components/dashboard/deals-view';
+import { notFound } from 'next/navigation';
 
 export default async function DealsPage() {
-  const workspace = await getOrCreateDefaultWorkspace();
+  const workspace = await getCurrentWorkspaceContext();
+  if (!workspace) notFound();
 
   const [pipeline, deals] = await Promise.all([
     prisma.pipeline.findFirst({

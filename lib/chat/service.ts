@@ -10,7 +10,7 @@ import { logger, newCorrelationId } from '@/lib/observability/logger';
 import { detectIntent, getConversationalResponse } from './intent';
 import { resolveIdentity } from '@/lib/crm/contact';
 import { enqueueOutboxEvent, processOutboxEvents } from '@/lib/outbox/worker';
-import { ensureDatabaseSchemaPatched, ensureDemoDataSeeded } from '@/lib/database/auto-seed';
+import { ensureDemoDataSeeded } from '@/lib/database/auto-seed';
 
 /**
  * Chat orchestration and persistence.
@@ -88,7 +88,6 @@ async function resolveConversation(input: AskInput): Promise<{ id: string; isNew
 }
 
 export async function ask(input: AskInput): Promise<AskOutput> {
-  await ensureDatabaseSchemaPatched();
   const traceId = newCorrelationId();
   const log = logger.child({ traceId, role: input.role });
   const startedAt = Date.now();
@@ -261,21 +260,10 @@ export async function ask(input: AskInput): Promise<AskOutput> {
     });
   }
 
-  try {
-    await prisma.conversation.update({
-      where: { id: conversationId },
-      data: { updatedAt: new Date() },
-    });
-  } catch {
-    try {
-      await prisma.$executeRawUnsafe(
-        'UPDATE "Conversation" SET "updatedAt" = NOW() WHERE id = $1',
-        conversationId,
-      );
-    } catch {
-      // Ignore if table/field fails
-    }
-  }
+  await prisma.conversation.update({
+    where: { id: conversationId },
+    data: { updatedAt: new Date() },
+  });
 
   // --- Automatic escalation --------------------------------------------------
   let escalationId: string | null = null;
@@ -298,21 +286,10 @@ export async function ask(input: AskInput): Promise<AskOutput> {
     });
     escalationId = escalation.id;
 
-    try {
-      await prisma.conversation.update({
-        where: { id: conversationId },
-        data: { status: 'ESCALATED' },
-      });
-    } catch {
-      try {
-        await prisma.$executeRawUnsafe(
-          'UPDATE "Conversation" SET "status" = \'ESCALATED\'::"ConversationStatus", "updatedAt" = NOW() WHERE id = $1',
-          conversationId,
-        );
-      } catch {
-        // Ignore if status update fails
-      }
-    }
+    await prisma.conversation.update({
+      where: { id: conversationId },
+      data: { status: 'ESCALATED' },
+    });
 
     await recordAudit({
       action: 'escalation.create',
@@ -387,17 +364,9 @@ export async function ask(input: AskInput): Promise<AskOutput> {
           data: { contactId: contact.id, updatedAt: new Date() },
         });
       } catch (convErr) {
-        try {
-          await prisma.$executeRawUnsafe(
-            'UPDATE "Conversation" SET "contactId" = $1, "updatedAt" = NOW() WHERE id = $2',
-            contact.id,
-            conversationId,
-          );
-        } catch {
-          log.warn('Conversation contact update skipped (non-blocking)', {
-            error: convErr instanceof Error ? convErr.message : String(convErr),
-          });
-        }
+        log.warn('Conversation contact update failed (non-blocking)', {
+          error: convErr instanceof Error ? convErr.message : String(convErr),
+        });
       }
 
       await enqueueOutboxEvent({

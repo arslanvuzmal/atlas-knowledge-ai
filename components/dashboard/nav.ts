@@ -14,20 +14,60 @@ export interface NavGroup {
 
 export const NAV_GROUPS: NavGroup[] = [
   {
-    label: 'WORKSPACE',
+    label: 'OVERVIEW',
     items: [
       {
-        href: '/chat',
-        label: 'Ask Atlas',
+        href: '/dashboard',
+        label: 'Overview',
         permission: 'chat:authenticated',
-        description: 'Grounded enterprise knowledge assistant with source citations',
+        description: 'Operational summary of customer intelligence and RAG health',
       },
+    ],
+  },
+  {
+    label: 'CUSTOMERS',
+    items: [
       {
         href: '/dashboard/inbox',
-        label: 'Customer Inbox',
-        permission: 'conversation:read:own',
+        label: 'Inbox',
+        permission: 'inbox:read',
         description: '3-column Customer 360 intelligence inbox & composer',
       },
+      {
+        href: '/dashboard/contacts',
+        label: 'Contacts',
+        permission: 'crm:contact:read',
+        description: 'Identified visitors, leads, and customer profiles',
+      },
+      {
+        href: '/dashboard/companies',
+        label: 'Companies',
+        permission: 'crm:company:read',
+        description: 'Accounts, target organizations, and industry data',
+      },
+      {
+        href: '/dashboard/deals',
+        label: 'Deals',
+        permission: 'crm:deal:read',
+        description: 'Opportunity pipeline, Kanban board, and sales stages',
+      },
+      {
+        href: '/dashboard/tasks',
+        label: 'Tasks',
+        permission: 'crm:task:read',
+        description: 'Operational tasks, follow-ups, and due dates',
+      },
+      {
+        href: '/dashboard/tickets',
+        label: 'Tickets',
+        permission: 'crm:ticket:read',
+        description: 'Durable customer support tickets and cases',
+      },
+    ],
+  },
+  {
+    label: 'KNOWLEDGE',
+    items: [
       {
         href: '/dashboard/knowledge-bases',
         label: 'Knowledge Bases',
@@ -40,35 +80,23 @@ export const NAV_GROUPS: NavGroup[] = [
         permission: 'document:read',
         description: 'Indexed sources, RBAC access levels, and chunk states',
       },
-    ],
-  },
-  {
-    label: 'OPERATIONS',
-    items: [
-      {
-        href: '/dashboard/escalations',
-        label: 'Escalations',
-        permission: 'escalation:read',
-        description: 'Human review queue for low confidence or unsupported questions',
-      },
       {
         href: '/dashboard/knowledge-health',
-        label: 'Knowledge Gaps',
+        label: 'Knowledge Health',
         permission: 'document:read',
         description: 'Unanswered question clusters and source health',
       },
       {
-        href: '/dashboard/deals',
-        label: 'Deals & Pipeline',
-        permission: 'chat:authenticated',
-        description: 'Opportunity pipeline, Kanban board, and sales stages',
+        href: '/dashboard/evaluations',
+        label: 'Evaluations',
+        permission: 'evaluation:read',
+        description: 'Retrieval accuracy workbench & test history',
       },
-      {
-        href: '/dashboard/contacts',
-        label: 'Contacts & Accounts',
-        permission: 'chat:authenticated',
-        description: 'Identified customers, target accounts, and leads',
-      },
+    ],
+  },
+  {
+    label: 'INSIGHTS',
+    items: [
       {
         href: '/dashboard/analytics',
         label: 'Analytics',
@@ -76,26 +104,32 @@ export const NAV_GROUPS: NavGroup[] = [
         description: 'Grounding rates, retrieval latency, and query metrics',
       },
       {
-        href: '/dashboard/evaluations',
-        label: 'Evaluations',
-        permission: 'analytics:view',
-        description: 'Retrieval accuracy workbench & test history',
+        href: '/dashboard/feedback',
+        label: 'Feedback',
+        permission: 'feedback:review',
+        description: 'User feedback, helpful ratings, and answer quality',
       },
     ],
   },
   {
-    label: 'ADMINISTRATION',
+    label: 'SYSTEM',
     items: [
       {
         href: '/dashboard/automations',
         label: 'Automations',
-        permission: 'settings:retrieval:read',
+        permission: 'automation:read',
         description: 'Workspace trigger rules and outbox workflows',
+      },
+      {
+        href: '/dashboard/integrations',
+        label: 'Integrations',
+        permission: 'integration:manage',
+        description: 'Connected AI models, vector stores, and external tools',
       },
       {
         href: '/dashboard/users',
         label: 'Users & Access',
-        permission: 'user:manage',
+        permission: 'user:read',
         description: 'Role-based access control and user directory',
       },
       {

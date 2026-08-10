@@ -1,4 +1,4 @@
-import { getOrCreateDefaultWorkspace } from '@/lib/workspace/context';
+import { getCurrentWorkspaceContext } from '@/lib/workspace/context';
 import { getCompanyById } from '@/lib/crm/company';
 import { PageHeader, Panel, PanelHeader, Badge, DataTable, Cell } from '@/components/ui/primitives';
 import { notFound } from 'next/navigation';
@@ -6,7 +6,8 @@ import Link from 'next/link';
 
 export default async function CompanyDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const workspace = await getOrCreateDefaultWorkspace();
+  const workspace = await getCurrentWorkspaceContext();
+  if (!workspace) notFound();
 
   const company = await getCompanyById(workspace.id, id);
   if (!company) {

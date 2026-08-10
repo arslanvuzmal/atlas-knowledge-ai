@@ -1,9 +1,11 @@
-import { getOrCreateDefaultWorkspace } from '@/lib/workspace/context';
+import { getCurrentWorkspaceContext } from '@/lib/workspace/context';
 import { listTickets } from '@/lib/crm/ticket';
 import { PageHeader, Panel, DataTable, Cell, Badge } from '@/components/ui/primitives';
+import { notFound } from 'next/navigation';
 
 export default async function TicketsPage() {
-  const workspace = await getOrCreateDefaultWorkspace();
+  const workspace = await getCurrentWorkspaceContext();
+  if (!workspace) notFound();
   const { items, total } = await listTickets(workspace.id, { limit: 100 });
 
   return (

@@ -1,10 +1,12 @@
-import { getOrCreateDefaultWorkspace } from '@/lib/workspace/context';
+import { getCurrentWorkspaceContext } from '@/lib/workspace/context';
 import { listContacts } from '@/lib/crm/contact';
 import { PageHeader, Panel, DataTable, Cell, Badge } from '@/components/ui/primitives';
 import Link from 'next/link';
+import { notFound } from 'next/navigation';
 
 export default async function ContactsPage() {
-  const workspace = await getOrCreateDefaultWorkspace();
+  const workspace = await getCurrentWorkspaceContext();
+  if (!workspace) notFound();
   const { items, total } = await listContacts(workspace.id, { limit: 100 });
 
   return (

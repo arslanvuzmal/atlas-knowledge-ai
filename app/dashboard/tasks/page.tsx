@@ -1,9 +1,11 @@
-import { getOrCreateDefaultWorkspace } from '@/lib/workspace/context';
+import { getCurrentWorkspaceContext } from '@/lib/workspace/context';
 import { listTasks } from '@/lib/crm/task';
 import { PageHeader, Panel, DataTable, Cell, Badge } from '@/components/ui/primitives';
+import { notFound } from 'next/navigation';
 
 export default async function TasksPage() {
-  const workspace = await getOrCreateDefaultWorkspace();
+  const workspace = await getCurrentWorkspaceContext();
+  if (!workspace) notFound();
   const { items, total } = await listTasks(workspace.id, { limit: 100 });
 
   return (

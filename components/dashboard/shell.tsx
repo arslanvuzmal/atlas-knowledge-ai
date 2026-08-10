@@ -176,8 +176,20 @@ export function DashboardShell({
           </div>
         </header>
 
-        <main id="main" className="min-w-0 flex-1 px-4 py-6 sm:px-6 lg:px-8">
-          <div className="mx-auto max-w-7xl">{children}</div>
+        <main
+          id="main"
+          className={cn(
+            'min-w-0 flex-1',
+            pathname.startsWith('/dashboard/inbox')
+              ? 'flex flex-col h-[calc(100vh-56px)] overflow-hidden'
+              : 'px-4 py-6 sm:px-6 lg:px-8',
+          )}
+        >
+          {pathname.startsWith('/dashboard/inbox') ? (
+            children
+          ) : (
+            <div className="mx-auto max-w-7xl">{children}</div>
+          )}
         </main>
       </div>
     </div>

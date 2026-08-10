@@ -2,29 +2,10 @@ import { prisma } from '@/lib/database/client';
 import { logger } from '@/lib/observability/logger';
 import type { AccessLevel } from '@prisma/client';
 
-let schemaPatched = false;
-
-export async function ensureDatabaseSchemaPatched(): Promise<void> {
-  if (schemaPatched) return;
-  try {
-    await prisma.$executeRawUnsafe(
-      'ALTER TABLE "Conversation" ADD COLUMN IF NOT EXISTS "workspaceId" TEXT',
-    );
-    await prisma.$executeRawUnsafe(
-      'ALTER TABLE "Conversation" ADD COLUMN IF NOT EXISTS "contactId" TEXT',
-    );
-    schemaPatched = true;
-  } catch (err) {
-    logger.warn('Database schema auto-patch warning', { error: err });
-  }
-}
-
 export async function ensureDemoDataSeeded(): Promise<{
   workspaceId: string;
   knowledgeBaseId: string;
 }> {
-  await ensureDatabaseSchemaPatched();
-
   let workspace = await prisma.workspace.findFirst({
     orderBy: { createdAt: 'asc' },
   });

@@ -1,4 +1,4 @@
-import { getOrCreateDefaultWorkspace } from '@/lib/workspace/context';
+import { getCurrentWorkspaceContext } from '@/lib/workspace/context';
 import { prisma } from '@/lib/database/client';
 import { PageHeader, Panel, PanelHeader, Badge, DefinitionList } from '@/components/ui/primitives';
 import { notFound } from 'next/navigation';
@@ -6,7 +6,8 @@ import Link from 'next/link';
 
 export default async function ContactDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const workspace = await getOrCreateDefaultWorkspace();
+  const workspace = await getCurrentWorkspaceContext();
+  if (!workspace) notFound();
 
   const contact = await prisma.contact.findFirst({
     where: { workspaceId: workspace.id, id },
@@ -26,6 +27,7 @@ export default async function ContactDetailPage({ params }: { params: Promise<{ 
   }
 
   const intel = contact.intelligence;
+  const targetConvId = contact.conversations[0]?.id;
 
   return (
     <div className="space-y-6">
@@ -35,7 +37,9 @@ export default async function ContactDetailPage({ params }: { params: Promise<{ 
         action={
           <div className="flex items-center gap-2">
             <Link
-              href="/dashboard/inbox"
+              href={
+                targetConvId ? `/dashboard/inbox?conversation=${targetConvId}` : '/dashboard/inbox'
+              }
               className="px-3 py-1.5 text-xs font-semibold rounded border border-edge bg-canvas hover:bg-canvas-overlay"
             >
               Open in Inbox
@@ -72,12 +76,12 @@ export default async function ContactDetailPage({ params }: { params: Promise<{ 
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-        {/* Left Column: AI Intelligence & Overview (7 Cols) */}
+        {/* Left Column: Customer Intelligence & Overview (7 Cols) */}
         <div className="lg:col-span-7 space-y-6">
           {intel ? (
             <Panel className="p-5">
               <PanelHeader
-                title="AI Customer Intelligence"
+                title="Customer Intelligence"
                 description="Derived from governed customer interactions"
               />
               <div className="space-y-4 pt-4 text-xs">
@@ -141,7 +145,9 @@ export default async function ContactDetailPage({ params }: { params: Promise<{ 
                     <div className="font-semibold text-ink">{d.name}</div>
                     <div className="text-ink-faint mt-0.5">Stage: {d.stage.name}</div>
                   </div>
-                  <div className="font-bold text-accent">${d.amount?.toLocaleString() ?? 0}</div>
+                  <div className="font-bold text-accent">
+                    {d.amount != null ? `$${d.amount.toLocaleString()}` : '—'}
+                  </div>
                 </div>
               ))}
 
@@ -169,6 +175,34 @@ export default async function ContactDetailPage({ params }: { params: Promise<{ 
 
               {contact.tasks.length === 0 ? (
                 <div className="text-xs text-ink-faint py-2">No pending tasks</div>
+              ) : null}
+            </div>
+          </Panel>
+
+          <Panel className="p-4">
+            <PanelHeader title="Tickets" />
+            <div className="space-y-2 pt-3">
+              {contact.tickets.map((tk) => (
+                <div
+                  key={tk.id}
+                  className="p-3 rounded border border-edge bg-canvas-overlay text-xs flex justify-between"
+                >
+                  <div>
+                    <div className="font-semibold text-ink">{tk.subject}</div>
+                    <div className="text-ink-faint mt-0.5">Status: {tk.status}</div>
+                  </div>
+                  <Badge
+                    tone={
+                      tk.priority === 'HIGH' || tk.priority === 'URGENT' ? 'critical' : 'neutral'
+                    }
+                  >
+                    {tk.priority}
+                  </Badge>
+                </div>
+              ))}
+
+              {contact.tickets.length === 0 ? (
+                <div className="text-xs text-ink-faint py-2">No open support tickets</div>
               ) : null}
             </div>
           </Panel>

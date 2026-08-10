@@ -1,6 +1,7 @@
 import { GoogleGenAI } from '@google/genai';
 import { z } from 'zod';
 import { prisma } from '@/lib/database/client';
+import { logger } from '@/lib/observability/logger';
 import { calculateLeadScore } from './scoring';
 
 export const customerIntelligenceSchema = z.object({
@@ -56,8 +57,11 @@ ${combinedText}`;
       if (validated.success) {
         return await saveCustomerIntelligence(workspaceId, contactId, validated.data);
       }
-    } catch {
-      // Fallback to deterministic heuristic engine below
+    } catch (geminiErr) {
+      logger.warn('Remote Gemini intelligence extraction failed, using deterministic engine', {
+        error: geminiErr instanceof Error ? geminiErr.message : String(geminiErr),
+        contactId,
+      });
     }
   }
 

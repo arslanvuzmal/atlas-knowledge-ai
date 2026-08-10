@@ -13,7 +13,7 @@ function makeChunk(documentId: string, documentTitle: string, content: string): 
     sectionTitle: null,
     accessLevel: 'PUBLIC',
     documentTitle,
-    relevanceScore: 0.85,
+    retrievalScore: 0.85,
     rerankScore: 0.85,
     rank: 1,
     signals: {

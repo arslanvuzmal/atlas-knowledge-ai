@@ -1,32 +1,69 @@
 import { prisma } from '@/lib/database/client';
+import type { SessionUser } from '@/lib/auth/session';
 
 export interface WorkspaceContext {
   id: string;
   name: string;
   slug: string;
   domain: string | null;
+  role?: string;
+}
+
+/**
+ * Resolves workspace context safely without mutating database data on read.
+ */
+export async function getCurrentWorkspaceContext(
+  user?: SessionUser | null,
+): Promise<WorkspaceContext | null> {
+  if (user?.id) {
+    const member = await prisma.workspaceMember.findFirst({
+      where: { userId: user.id },
+      include: { workspace: true },
+      orderBy: { createdAt: 'asc' },
+    });
+
+    if (member) {
+      return {
+        id: member.workspace.id,
+        name: member.workspace.name,
+        slug: member.workspace.slug,
+        domain: member.workspace.domain,
+        role: member.role,
+      };
+    }
+  }
+
+  const firstWs = await prisma.workspace.findFirst({
+    orderBy: { createdAt: 'asc' },
+  });
+
+  if (firstWs) {
+    return {
+      id: firstWs.id,
+      name: firstWs.name,
+      slug: firstWs.slug,
+      domain: firstWs.domain,
+      role: 'MEMBER',
+    };
+  }
+
+  return null;
 }
 
 export async function getOrCreateDefaultWorkspace(): Promise<WorkspaceContext> {
-  let ws = await prisma.workspace.findUnique({
-    where: { slug: 'northstar-cloud' },
-  });
+  const ctx = await getCurrentWorkspaceContext();
+  if (ctx) return ctx;
 
-  if (!ws) {
-    ws = await prisma.workspace.create({
-      data: {
-        name: 'Northstar Cloud',
-        slug: 'northstar-cloud',
-        domain: 'northstar.example',
-      },
-    });
+  const ws = await prisma.workspace.findFirst({ orderBy: { createdAt: 'asc' } });
+  if (ws) {
+    return { id: ws.id, name: ws.name, slug: ws.slug, domain: ws.domain };
   }
 
   return {
-    id: ws.id,
-    name: ws.name,
-    slug: ws.slug,
-    domain: ws.domain,
+    id: 'default-workspace-id',
+    name: 'Northstar Cloud',
+    slug: 'northstar-cloud',
+    domain: 'northstar.example',
   };
 }
 
