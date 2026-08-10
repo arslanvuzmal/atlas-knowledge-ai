@@ -224,6 +224,7 @@ export async function POST(request: Request) {
         error: publicMessage,
         code,
         correlationId: guard.correlationId,
+        details: error instanceof Error ? error.message : String(error),
       },
       { status: statusCode },
     );
