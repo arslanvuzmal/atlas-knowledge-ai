@@ -7,6 +7,7 @@ import { validateQuestion } from '@/lib/retrieval/query';
 import { prisma } from '@/lib/database/client';
 import { randomToken } from '@/lib/security/hash';
 import { logger } from '@/lib/observability/logger';
+import { ensureDemoDataSeeded } from '@/lib/database/auto-seed';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
@@ -64,12 +65,25 @@ export async function POST(request: Request) {
   }
 
   let knowledgeBaseId = parsed.data.knowledgeBaseId ?? null;
+  if (knowledgeBaseId) {
+    const existingKb = await prisma.knowledgeBase.findUnique({
+      where: { id: knowledgeBaseId },
+      select: { id: true },
+    });
+    if (!existingKb) knowledgeBaseId = null;
+  }
+
   if (!knowledgeBaseId) {
     const primary = await prisma.knowledgeBase.findFirst({
       orderBy: { createdAt: 'asc' },
       select: { id: true },
     });
-    knowledgeBaseId = primary?.id ?? null;
+    if (primary) {
+      knowledgeBaseId = primary.id;
+    } else {
+      const seeded = await ensureDemoDataSeeded();
+      knowledgeBaseId = seeded.knowledgeBaseId;
+    }
   }
 
   const startedAt = Date.now();

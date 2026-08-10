@@ -12,13 +12,17 @@ function makeChunk(documentId: string, documentTitle: string, content: string): 
     pageNumber: 1,
     sectionTitle: null,
     accessLevel: 'PUBLIC',
-    knowledgeBaseId: 'kb1',
-    metadata: null,
-    embeddingProvider: 'demo',
-    embeddingModel: 'demo',
     documentTitle,
     relevanceScore: 0.85,
+    rerankScore: 0.85,
     rank: 1,
+    signals: {
+      coverage: 0.8,
+      proximity: 0.8,
+      rarity: 0.8,
+      titleMatch: 0.8,
+      lengthPenalty: 1.0,
+    },
   };
 }
 

@@ -338,7 +338,7 @@ describe('retrieval evaluation', () => {
       modelSettings,
     });
 
-    const isDemo = retrieval.chunks[0]?.embeddingProvider === 'demo';
+    const isDemo = answer.isDemo;
 
     if (isDemo || answer.confidence < settings.confidenceThreshold) {
       // Under demo mode or low confidence, hedging or refusing is expected and honest.

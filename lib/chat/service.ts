@@ -10,6 +10,7 @@ import { logger, newCorrelationId } from '@/lib/observability/logger';
 import { detectIntent, getConversationalResponse } from './intent';
 import { resolveIdentity } from '@/lib/crm/contact';
 import { enqueueOutboxEvent, processOutboxEvents } from '@/lib/outbox/worker';
+import { ensureDemoDataSeeded } from '@/lib/database/auto-seed';
 
 /**
  * Chat orchestration and persistence.
@@ -337,8 +338,8 @@ export async function ask(input: AskInput): Promise<AskOutput> {
       workspaceId = kb?.workspaceId ?? null;
     }
     if (!workspaceId) {
-      const ws = await prisma.workspace.findFirst({ select: { id: true } });
-      workspaceId = ws?.id ?? null;
+      const seeded = await ensureDemoDataSeeded();
+      workspaceId = seeded.workspaceId;
     }
 
     if (workspaceId) {
