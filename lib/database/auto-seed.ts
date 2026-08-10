@@ -6,6 +6,15 @@ export async function ensureDemoDataSeeded(): Promise<{
   workspaceId: string;
   knowledgeBaseId: string;
 }> {
+  try {
+    await prisma.$executeRawUnsafe(`
+      ALTER TABLE "Conversation" ADD COLUMN IF NOT EXISTS "workspaceId" TEXT;
+      ALTER TABLE "Conversation" ADD COLUMN IF NOT EXISTS "contactId" TEXT;
+    `);
+  } catch {
+    // Ignore schema auto-patch error if DB lacks DDL permissions or columns already exist
+  }
+
   let workspace = await prisma.workspace.findFirst({
     orderBy: { createdAt: 'asc' },
   });
