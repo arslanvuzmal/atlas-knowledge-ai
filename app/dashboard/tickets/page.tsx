@@ -1,6 +1,7 @@
 import { getCurrentWorkspaceContext } from '@/lib/workspace/context';
 import { listTickets } from '@/lib/crm/ticket';
 import { PageHeader, Panel, DataTable, Cell, Badge } from '@/components/ui/primitives';
+import { formatDate } from '@/lib/ui';
 import { notFound } from 'next/navigation';
 
 export default async function TicketsPage() {
@@ -50,7 +51,7 @@ export default async function TicketsPage() {
               <Cell>{ticket.company?.name || '—'}</Cell>
               <Cell>{ticket.assignee?.name || 'Unassigned'}</Cell>
               <Cell mono className="text-xs">
-                {new Date(ticket.createdAt).toLocaleDateString()}
+                {formatDate(ticket.createdAt)}
               </Cell>
             </tr>
           ))}

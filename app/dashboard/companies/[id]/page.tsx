@@ -1,6 +1,7 @@
 import { getCurrentWorkspaceContext } from '@/lib/workspace/context';
 import { getCompanyById } from '@/lib/crm/company';
 import { PageHeader, Panel, PanelHeader, Badge, DataTable, Cell } from '@/components/ui/primitives';
+import { formatDate } from '@/lib/ui';
 import { notFound } from 'next/navigation';
 import Link from 'next/link';
 
@@ -63,7 +64,7 @@ export default async function CompanyDetailPage({ params }: { params: Promise<{ 
               <Cell>{c.primaryEmail || '—'}</Cell>
               <Cell>{c.lifecycleStage}</Cell>
               <Cell mono>{c.leadScore} pts</Cell>
-              <Cell mono>{new Date(c.lastActivityAt).toLocaleDateString()}</Cell>
+              <Cell mono>{formatDate(c.lastActivityAt)}</Cell>
             </tr>
           ))}
         </DataTable>

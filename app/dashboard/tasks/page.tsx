@@ -1,6 +1,7 @@
 import { getCurrentWorkspaceContext } from '@/lib/workspace/context';
 import { listTasks } from '@/lib/crm/task';
 import { PageHeader, Panel, DataTable, Cell, Badge } from '@/components/ui/primitives';
+import { formatDate } from '@/lib/ui';
 import { notFound } from 'next/navigation';
 
 export default async function TasksPage() {
@@ -31,7 +32,7 @@ export default async function TasksPage() {
               <Cell>{task.contact?.displayName || '—'}</Cell>
               <Cell>{task.company?.name || '—'}</Cell>
               <Cell mono className="text-xs">
-                {task.dueAt ? new Date(task.dueAt).toLocaleDateString() : 'No due date'}
+                {formatDate(task.dueAt)}
               </Cell>
             </tr>
           ))}

@@ -1,6 +1,7 @@
 import { getCurrentWorkspaceContext } from '@/lib/workspace/context';
 import { listContacts } from '@/lib/crm/contact';
 import { PageHeader, Panel, DataTable, Cell, Badge } from '@/components/ui/primitives';
+import { formatDate } from '@/lib/ui';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 
@@ -62,7 +63,7 @@ export default async function ContactsPage() {
               </Cell>
               <Cell>{contact.intelligence?.primaryIntent || '—'}</Cell>
               <Cell mono className="text-xs">
-                {new Date(contact.lastActivityAt).toLocaleDateString()}
+                {formatDate(contact.lastActivityAt)}
               </Cell>
               <Cell className="text-xs">{contact.source}</Cell>
             </tr>

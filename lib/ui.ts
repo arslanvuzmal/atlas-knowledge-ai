@@ -18,48 +18,66 @@ export function formatBytes(bytes: number): string {
   return `${(bytes / 1024 ** index).toFixed(index === 0 ? 0 : 1)} ${units[index]}`;
 }
 
-export function formatDate(value: Date | string): string {
-  const date = typeof value === 'string' ? new Date(value) : value;
-  return new Intl.DateTimeFormat('en-GB', {
-    day: '2-digit',
-    month: 'short',
-    year: 'numeric',
-  }).format(date);
-}
-
-export function formatDateTime(value: Date | string): string {
-  const date = typeof value === 'string' ? new Date(value) : value;
-  return new Intl.DateTimeFormat('en-GB', {
-    day: '2-digit',
-    month: 'short',
-    year: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-  }).format(date);
-}
-
-export function formatRelative(value: Date | string): string {
-  const date = typeof value === 'string' ? new Date(value) : value;
-  const seconds = Math.round((Date.now() - date.getTime()) / 1000);
-
-  const steps: [number, Intl.RelativeTimeFormatUnit][] = [
-    [60, 'second'],
-    [3600, 'minute'],
-    [86400, 'hour'],
-    [604800, 'day'],
-    [2629800, 'week'],
-    [31557600, 'month'],
-  ];
-
-  const formatter = new Intl.RelativeTimeFormat('en-GB', { numeric: 'auto' });
-  let previous = 1;
-  for (const [limit, unit] of steps) {
-    if (Math.abs(seconds) < limit) {
-      return formatter.format(-Math.round(seconds / previous), unit);
-    }
-    previous = limit;
+export function formatDate(value: Date | string | null | undefined): string {
+  if (!value) return '—';
+  try {
+    const date = typeof value === 'string' ? new Date(value) : value;
+    if (isNaN(date.getTime())) return '—';
+    return new Intl.DateTimeFormat('en-GB', {
+      day: '2-digit',
+      month: 'short',
+      year: 'numeric',
+    }).format(date);
+  } catch {
+    return '—';
   }
-  return formatter.format(-Math.round(seconds / 31557600), 'year');
+}
+
+export function formatDateTime(value: Date | string | null | undefined): string {
+  if (!value) return '—';
+  try {
+    const date = typeof value === 'string' ? new Date(value) : value;
+    if (isNaN(date.getTime())) return '—';
+    return new Intl.DateTimeFormat('en-GB', {
+      day: '2-digit',
+      month: 'short',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+    }).format(date);
+  } catch {
+    return '—';
+  }
+}
+
+export function formatRelative(value: Date | string | null | undefined): string {
+  if (!value) return '—';
+  try {
+    const date = typeof value === 'string' ? new Date(value) : value;
+    if (isNaN(date.getTime())) return '—';
+    const seconds = Math.round((Date.now() - date.getTime()) / 1000);
+
+    const steps: [number, Intl.RelativeTimeFormatUnit][] = [
+      [60, 'second'],
+      [3600, 'minute'],
+      [86400, 'hour'],
+      [604800, 'day'],
+      [2629800, 'week'],
+      [31557600, 'month'],
+    ];
+
+    const formatter = new Intl.RelativeTimeFormat('en-GB', { numeric: 'auto' });
+    let previous = 1;
+    for (const [limit, unit] of steps) {
+      if (Math.abs(seconds) < limit) {
+        return formatter.format(-Math.round(seconds / previous), unit);
+      }
+      previous = limit;
+    }
+    return formatter.format(-Math.round(seconds / 31557600), 'year');
+  } catch {
+    return '—';
+  }
 }
 
 /** Reads the double-submit CSRF cookie for fetch calls from the browser. */

@@ -60,6 +60,11 @@ export default defineConfig({
         storageState: path.join(AUTH_DIR, 'admin.json'),
       },
     },
+    {
+      name: 'money-demo',
+      testMatch: /money-demo\.spec\.ts/,
+      use: { ...devices['Desktop Chrome'], viewport: { width: 1440, height: 900 } },
+    },
   ],
 
   webServer: process.env.E2E_BASE_URL
