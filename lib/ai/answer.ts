@@ -96,13 +96,8 @@ function buildHistoryMessages(history: ConversationTurn[], limit: number): ChatM
     }));
 }
 
-/**
- * Detects contradictory information across retrieved sources.
- *
- * This is a heuristic: it looks for passages that make opposing claims
- * about the same entities/quantities. It is not authoritative—conflicts
- * are flagged for human review rather than automatically resolved.
- */
+import { detectMaterialConflicts } from '@/lib/rag/conflict';
+
 function detectConflicts(
   chunks: RerankedChunk[],
   question: string,
@@ -110,114 +105,9 @@ function detectConflicts(
   detected: boolean;
   conflictingDocuments: { documentId: string; title: string; excerpt: string }[];
 } {
-  if (chunks.length < 2) return { detected: false, conflictingDocuments: [] };
-
-  // Extract key terms from the question that indicate a specific factual query
-  const questionTerms = question
-    .toLowerCase()
-    .split(/\s+/)
-    .filter((t) => t.length > 3);
-  if (questionTerms.length === 0) return { detected: false, conflictingDocuments: [] };
-
-  // Group chunks by document
-  const byDocument = new Map<string, RerankedChunk[]>();
-  for (const chunk of chunks) {
-    const existing = byDocument.get(chunk.documentId) ?? [];
-    existing.push(chunk);
-    byDocument.set(chunk.documentId, existing);
-  }
-
-  // Simple conflict heuristic: look for numeric discrepancies in passages
-  // that address the same question terms
-  const numberPattern =
-    /\b(\d+(?:[.,]\d+)?)\s*(days?|hours?|months?|years?|percent|%|\$|USD|GB|MB|KB|TB|users?|seats?|licenses?)\b/gi;
-  const numericClaims = new Map<
-    string,
-    { documentId: string; title: string; value: string; context: string }[]
-  >();
-
-  for (const [docId, docChunks] of byDocument) {
-    const docTitle = docChunks[0].documentTitle;
-    for (const chunk of docChunks) {
-      const matches = chunk.content.matchAll(numberPattern);
-      for (const match of matches) {
-        const fullMatch = match[0];
-        const key = fullMatch.toLowerCase().replace(/\s+/g, ' ');
-        const existing = numericClaims.get(key) ?? [];
-        existing.push({
-          documentId: docId,
-          title: docTitle,
-          value: fullMatch,
-          context: chunk.content.slice(
-            Math.max(0, match.index! - 80),
-            match.index! + fullMatch.length + 80,
-          ),
-        });
-        numericClaims.set(key, existing);
-      }
-    }
-  }
-
-  // Check if the same unit has different values across documents
-  const conflictingDocuments: { documentId: string; title: string; excerpt: string }[] = [];
-  const seenDocs = new Set<string>();
-
-  for (const [, claims] of numericClaims) {
-    if (claims.length < 2) continue;
-    const uniqueValues = new Set(claims.map((c) => c.value));
-    if (uniqueValues.size > 1) {
-      for (const claim of claims) {
-        if (!seenDocs.has(claim.documentId)) {
-          seenDocs.add(claim.documentId);
-          conflictingDocuments.push({
-            documentId: claim.documentId,
-            title: claim.title,
-            excerpt: claim.context.trim(),
-          });
-        }
-      }
-    }
-  }
-
-  // Also check for direct contradictory language (allows/denies, required/optional, etc.)
-  const contradictionPairs = [
-    ['allows', 'does not allow'],
-    ['permits', 'prohibits'],
-    ['required', 'optional'],
-    ['must', 'must not'],
-    ['shall', 'shall not'],
-    ['is', 'is not'],
-    ['includes', 'excludes'],
-    ['covers', 'does not cover'],
-  ];
-
-  const lowerChunks = chunks.map((c) => c.content.toLowerCase());
-  for (const [positive, negative] of contradictionPairs) {
-    const hasPositive = lowerChunks.some((c) => c.includes(positive));
-    const hasNegative = lowerChunks.some((c) => c.includes(negative));
-    if (hasPositive && hasNegative) {
-      // Find which documents have which
-      for (const chunk of chunks) {
-        const lower = chunk.content.toLowerCase();
-        if (lower.includes(positive) || lower.includes(negative)) {
-          if (!seenDocs.has(chunk.documentId)) {
-            seenDocs.add(chunk.documentId);
-            conflictingDocuments.push({
-              documentId: chunk.documentId,
-              title: chunk.documentTitle,
-              excerpt: chunk.content.slice(0, 200).trim(),
-            });
-          }
-        }
-      }
-    }
-  }
-
-  return {
-    detected: conflictingDocuments.length >= 2,
-    conflictingDocuments: conflictingDocuments.slice(0, 4),
-  };
+  return detectMaterialConflicts(chunks, question);
 }
+
 
 function unsupportedAnswer(
   retrieval: RetrievalResult,

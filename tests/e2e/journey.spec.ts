@@ -136,7 +136,7 @@ test.describe('conversation lifecycle', () => {
 
     const first = await ask(page, 'What is the refund window for an annual subscription?');
     await expect(first).toContainText(/30 days/i);
-    await expect(first.getByText('Sources')).toBeVisible();
+    await expect(first.getByText('Sources', { exact: true })).toBeVisible();
 
     const second = await ask(page, 'Does that apply to monthly plans too?');
     await expect(second).toContainText(/14 days|monthly/i);

@@ -45,7 +45,7 @@ test.describe('public demo', () => {
     const answer = await ask(page, 'What is the refund window for an annual subscription?');
 
     await expect(answer).toContainText(/30 days/i);
-    await expect(answer.getByText('Sources')).toBeVisible();
+    await expect(answer.getByText('Sources', { exact: true })).toBeVisible();
   });
 
   test('refuses a restricted question without naming the document', async ({ page }) => {
