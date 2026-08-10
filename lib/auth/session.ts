@@ -90,14 +90,48 @@ export async function getSession(): Promise<SessionContext> {
   const anonymous: SessionContext = { user: null, role: 'PUBLIC', isAuthenticated: false };
 
   let token: string | undefined;
+  let demoRoleCookie: string | undefined;
   try {
     const cookieStore = await cookies();
     token = cookieStore.get(SESSION_COOKIE)?.value;
+    demoRoleCookie = cookieStore.get('atlas_demo_role')?.value;
   } catch {
     // `cookies()` is unavailable in some rendering contexts; treat as anonymous.
     return anonymous;
   }
-  if (!token) return anonymous;
+
+  if (!token) {
+    if (env().DEMO_MODE) {
+      const demoRole = (demoRoleCookie as Role) || 'ADMIN';
+      if (demoRole === 'PUBLIC') return anonymous;
+
+      const demoUser = await prisma.user.findFirst({
+        where: { isDemo: true },
+        orderBy: { createdAt: 'asc' },
+      });
+
+      if (demoUser) {
+        return {
+          user: toSessionUser({ ...demoUser, role: demoRole }),
+          role: demoRole,
+          isAuthenticated: true,
+        };
+      }
+
+      return {
+        user: {
+          id: 'demo-user-id',
+          name: 'Demo Administrator',
+          email: 'admin@northstar.example',
+          role: demoRole,
+          isDemo: true,
+        },
+        role: demoRole,
+        isAuthenticated: true,
+      };
+    }
+    return anonymous;
+  }
 
   const record = await prisma.session.findUnique({
     where: { tokenHash: sha256(token) },

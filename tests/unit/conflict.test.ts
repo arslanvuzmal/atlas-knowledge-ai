@@ -5,6 +5,7 @@ import type { RerankedChunk } from '@/lib/reranking';
 function makeChunk(documentId: string, documentTitle: string, content: string): RerankedChunk {
   return {
     id: `chunk_${Math.random()}`,
+    knowledgeBaseId: 'kb_1',
     documentId,
     documentVersionId: 'v1',
     chunkIndex: 0,
@@ -13,9 +14,11 @@ function makeChunk(documentId: string, documentTitle: string, content: string): 
     sectionTitle: null,
     accessLevel: 'PUBLIC',
     documentTitle,
+    documentSourceType: 'TEXT',
+    documentSourceUrl: null,
     retrievalScore: 0.85,
     rerankScore: 0.85,
-    rank: 1,
+    score: 0.85,
     signals: {
       coverage: 0.8,
       proximity: 0.8,

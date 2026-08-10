@@ -1,6 +1,8 @@
 import { prisma } from '@/lib/database/client';
 import type { SessionUser } from '@/lib/auth/session';
 
+import { ensureDemoDataSeeded } from '@/lib/database/auto-seed';
+
 export interface WorkspaceContext {
   id: string;
   name: string;
@@ -33,9 +35,18 @@ export async function getCurrentWorkspaceContext(
     }
   }
 
-  const firstWs = await prisma.workspace.findFirst({
+  let firstWs = await prisma.workspace.findFirst({
     orderBy: { createdAt: 'asc' },
   });
+
+  if (!firstWs) {
+    try {
+      const seeded = await ensureDemoDataSeeded();
+      firstWs = await prisma.workspace.findUnique({ where: { id: seeded.workspaceId } });
+    } catch {
+      // Ignore if seeding fails
+    }
+  }
 
   if (firstWs) {
     return {
