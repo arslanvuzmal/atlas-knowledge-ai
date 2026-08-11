@@ -305,11 +305,8 @@ export async function listContacts(workspaceId: string, options?: ListContactsOp
     ]);
 
     if (items.length === 0) {
-      const globalWhere = { ...where };
-      delete globalWhere.workspaceId;
       const [fallbackItems, fallbackTotal] = await Promise.all([
         prisma.contact.findMany({
-          where: globalWhere,
           take: limit,
           skip: offset,
           orderBy,
@@ -318,7 +315,7 @@ export async function listContacts(workspaceId: string, options?: ListContactsOp
             intelligence: true,
           },
         }),
-        prisma.contact.count({ where: globalWhere }),
+        prisma.contact.count(),
       ]);
       if (fallbackItems.length > 0) {
         items = fallbackItems;

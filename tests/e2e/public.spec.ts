@@ -8,11 +8,11 @@ import { expect, test, type Page } from '@playwright/test';
  */
 
 async function ask(page: Page, question: string) {
-  const submitBtn = page.getByRole('button', { name: /Send|Ask/i }).first();
-  await expect(submitBtn).toBeEnabled({ timeout: 25_000 });
+  const input = page.getByRole('textbox', { name: 'Ask a question' });
+  await expect(input).toBeEnabled({ timeout: 25_000 });
   const before = await page.locator('article').count();
-  await page.getByLabel('Ask a question').fill(question);
-  await submitBtn.click();
+  await input.fill(question);
+  await input.press('Enter');
   await expect(page.locator('article')).toHaveCount(before + 1, { timeout: 45_000 });
   return page.locator('article').last();
 }
@@ -104,7 +104,7 @@ test.describe('public demo', () => {
   test('keeps context across a follow-up question', async ({ page }) => {
     await page.goto('/demo');
     await ask(page, 'What is the refund window for an annual subscription?');
-    await page.waitForTimeout(1500);
+    await page.waitForTimeout(1000);
     const followUp = await ask(page, 'Does that apply to monthly plans too?');
 
     await expect(followUp).toContainText(/14 days|monthly|30 days|refund/i);
