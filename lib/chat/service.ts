@@ -9,8 +9,8 @@ import { recordAudit } from '@/lib/security/audit';
 import { logger, newCorrelationId } from '@/lib/observability/logger';
 import { detectIntent, getConversationalResponse } from './intent';
 import { resolveIdentity } from '@/lib/crm/contact';
+import { getCurrentWorkspaceContext } from '@/lib/workspace/context';
 import { enqueueOutboxEvent, processOutboxEvents } from '@/lib/outbox/worker';
-import { ensureDemoDataSeeded } from '@/lib/database/auto-seed';
 
 /**
  * Chat orchestration and persistence.
@@ -338,8 +338,8 @@ export async function ask(input: AskInput): Promise<AskOutput> {
       workspaceId = kb?.workspaceId ?? null;
     }
     if (!workspaceId) {
-      const seeded = await ensureDemoDataSeeded();
-      workspaceId = seeded.workspaceId;
+      const ws = await getCurrentWorkspaceContext().catch(() => null);
+      workspaceId = ws?.id ?? 'demo-workspace-northstar';
     }
 
     if (workspaceId) {
