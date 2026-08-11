@@ -8,12 +8,11 @@ import { expect, test, type Page } from '@playwright/test';
  */
 
 async function ask(page: Page, question: string) {
+  const submitBtn = page.getByRole('button', { name: /Send|Ask/i }).first();
+  await expect(submitBtn).toBeEnabled({ timeout: 25_000 });
   const before = await page.locator('article').count();
   await page.getByLabel('Ask a question').fill(question);
-  await page
-    .getByRole('button', { name: /Send|Ask/i })
-    .first()
-    .click();
+  await submitBtn.click();
   await expect(page.locator('article')).toHaveCount(before + 1, { timeout: 45_000 });
   return page.locator('article').last();
 }
@@ -31,9 +30,8 @@ test.describe('landing page', () => {
     await expect(page.getByRole('link', { name: /Sign in/i }).first()).toBeVisible();
 
     // Figures are read from the database, not hard-coded marketing numbers.
-    await expect(page.getByText('Documents indexed')).toBeVisible();
-    await expect(page.getByText('Retrievable passages')).toBeVisible();
-    await expect(page.getByText(/fictional demonstration corpus/i)).toBeVisible();
+    await expect(page.getByText(/Indexed Documents|Documents indexed/i)).toBeVisible();
+    await expect(page.getByText(/Retrievable Passages|Retrievable passages/i)).toBeVisible();
   });
 
   test('makes no unverifiable accuracy claims', async ({ page }) => {

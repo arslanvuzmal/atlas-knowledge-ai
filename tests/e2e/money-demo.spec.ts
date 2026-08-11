@@ -51,7 +51,7 @@ test.describe('Flagship Commercial Demo Journey — Dynamic Visitor Identity', (
     );
     await input.press('Enter');
     await expect(page.locator('body')).toContainText(/follow up|contact|team/i, { timeout: 25000 });
-    await page.waitForTimeout(2000);
+    await page.waitForTimeout(3000);
 
     // 7. Login as Admin and verify lead in Contacts view
     await page.goto('/login');
@@ -65,7 +65,7 @@ test.describe('Flagship Commercial Demo Journey — Dynamic Visitor Identity', (
       await page.click('button[type="submit"]');
     }
     await page.waitForURL((url) => !url.pathname.includes('/login'), { timeout: 15000 });
-    await page.goto('/dashboard/contacts');
+    await page.goto(`/dashboard/contacts?q=${encodeURIComponent(uniqueEmail)}`);
     await expect(page.locator('body')).toContainText(uniqueEmail, { timeout: 25000 });
   });
 });
