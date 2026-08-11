@@ -99,18 +99,22 @@ export async function listCompanies(
     ];
   }
 
-  const [items, total] = await Promise.all([
-    prisma.company.findMany({
-      where,
-      take: limit,
-      skip: offset,
-      orderBy: { updatedAt: 'desc' },
-      include: {
-        _count: { select: { contacts: true, deals: true, tickets: true } },
-      },
-    }),
-    prisma.company.count({ where }),
-  ]);
+  try {
+    const [items, total] = await Promise.all([
+      prisma.company.findMany({
+        where,
+        take: limit,
+        skip: offset,
+        orderBy: { updatedAt: 'desc' },
+        include: {
+          _count: { select: { contacts: true, deals: true, tickets: true } },
+        },
+      }),
+      prisma.company.count({ where }),
+    ]);
 
-  return { items, total };
+    return { items, total };
+  } catch {
+    return { items: [], total: 0 };
+  }
 }

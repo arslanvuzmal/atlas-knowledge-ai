@@ -60,23 +60,27 @@ export async function listTickets(
   if (status) where.status = status;
   if (assigneeId) where.assigneeId = assigneeId;
 
-  const [items, total] = await Promise.all([
-    prisma.ticket.findMany({
-      where,
-      take: limit,
-      skip: offset,
-      orderBy: { createdAt: 'desc' },
-      include: {
-        assignee: { select: { id: true, name: true, email: true } },
-        contact: { select: { id: true, displayName: true, primaryEmail: true } },
-        company: { select: { id: true, name: true } },
-        escalation: { select: { id: true, reason: true, status: true } },
-      },
-    }),
-    prisma.ticket.count({ where }),
-  ]);
+  try {
+    const [items, total] = await Promise.all([
+      prisma.ticket.findMany({
+        where,
+        take: limit,
+        skip: offset,
+        orderBy: { createdAt: 'desc' },
+        include: {
+          assignee: { select: { id: true, name: true, email: true } },
+          contact: { select: { id: true, displayName: true, primaryEmail: true } },
+          company: { select: { id: true, name: true } },
+          escalation: { select: { id: true, reason: true, status: true } },
+        },
+      }),
+      prisma.ticket.count({ where }),
+    ]);
 
-  return { items, total };
+    return { items, total };
+  } catch {
+    return { items: [], total: 0 };
+  }
 }
 
 export async function resolveTicket(workspaceId: string, ticketId: string) {

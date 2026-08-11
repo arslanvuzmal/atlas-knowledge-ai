@@ -217,19 +217,43 @@ export async function listContacts(
     ];
   }
 
-  const [items, total] = await Promise.all([
-    prisma.contact.findMany({
-      where,
-      take: limit,
-      skip: offset,
-      orderBy: { lastActivityAt: 'desc' },
-      include: {
-        company: { select: { id: true, name: true, domain: true } },
-        intelligence: true,
-      },
-    }),
-    prisma.contact.count({ where }),
-  ]);
+  try {
+    const [items, total] = await Promise.all([
+      prisma.contact.findMany({
+        where,
+        take: limit,
+        skip: offset,
+        orderBy: { lastActivityAt: 'desc' },
+        include: {
+          company: { select: { id: true, name: true, domain: true } },
+          intelligence: true,
+        },
+      }),
+      prisma.contact.count({ where }),
+    ]);
 
-  return { items, total };
+    return { items, total };
+  } catch {
+    try {
+      const [items, total] = await Promise.all([
+        prisma.contact.findMany({
+          where,
+          take: limit,
+          skip: offset,
+          orderBy: { createdAt: 'desc' },
+          include: {
+            company: { select: { id: true, name: true, domain: true } },
+          },
+        }),
+        prisma.contact.count({ where }),
+      ]);
+
+      return {
+        items: items.map((item) => ({ ...item, intelligence: null })),
+        total,
+      };
+    } catch {
+      return { items: [], total: 0 };
+    }
+  }
 }

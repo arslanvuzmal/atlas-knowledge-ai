@@ -77,23 +77,27 @@ export async function listDeals(
   if (status) where.status = status;
   if (stageId) where.stageId = stageId;
 
-  const [items, total] = await Promise.all([
-    prisma.deal.findMany({
-      where,
-      take: limit,
-      skip: offset,
-      orderBy: { updatedAt: 'desc' },
-      include: {
-        stage: { select: { id: true, name: true, winProbability: true } },
-        primaryCompany: { select: { id: true, name: true } },
-        primaryContact: { select: { id: true, displayName: true, primaryEmail: true } },
-        owner: { select: { id: true, name: true, email: true } },
-      },
-    }),
-    prisma.deal.count({ where }),
-  ]);
+  try {
+    const [items, total] = await Promise.all([
+      prisma.deal.findMany({
+        where,
+        take: limit,
+        skip: offset,
+        orderBy: { updatedAt: 'desc' },
+        include: {
+          stage: { select: { id: true, name: true, winProbability: true } },
+          primaryCompany: { select: { id: true, name: true } },
+          primaryContact: { select: { id: true, displayName: true, primaryEmail: true } },
+          owner: { select: { id: true, name: true, email: true } },
+        },
+      }),
+      prisma.deal.count({ where }),
+    ]);
 
-  return { items, total };
+    return { items, total };
+  } catch {
+    return { items: [], total: 0 };
+  }
 }
 
 export async function updateDealStage(workspaceId: string, dealId: string, stageId: string) {

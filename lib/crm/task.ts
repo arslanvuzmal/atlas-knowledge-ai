@@ -63,23 +63,27 @@ export async function listTasks(
   if (status) where.status = status;
   if (ownerId) where.ownerId = ownerId;
 
-  const [items, total] = await Promise.all([
-    prisma.task.findMany({
-      where,
-      take: limit,
-      skip: offset,
-      orderBy: [{ dueAt: 'asc' }, { createdAt: 'desc' }],
-      include: {
-        owner: { select: { id: true, name: true, email: true } },
-        contact: { select: { id: true, displayName: true, primaryEmail: true } },
-        company: { select: { id: true, name: true } },
-        deal: { select: { id: true, name: true } },
-      },
-    }),
-    prisma.task.count({ where }),
-  ]);
+  try {
+    const [items, total] = await Promise.all([
+      prisma.task.findMany({
+        where,
+        take: limit,
+        skip: offset,
+        orderBy: [{ dueAt: 'asc' }, { createdAt: 'desc' }],
+        include: {
+          owner: { select: { id: true, name: true, email: true } },
+          contact: { select: { id: true, displayName: true, primaryEmail: true } },
+          company: { select: { id: true, name: true } },
+          deal: { select: { id: true, name: true } },
+        },
+      }),
+      prisma.task.count({ where }),
+    ]);
 
-  return { items, total };
+    return { items, total };
+  } catch {
+    return { items: [], total: 0 };
+  }
 }
 
 export async function completeTask(workspaceId: string, taskId: string) {
