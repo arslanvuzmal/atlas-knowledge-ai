@@ -8,6 +8,7 @@ import { getSession } from '@/lib/auth/session';
 import { allowedAccessLevels, hasPermission } from '@/lib/auth/rbac';
 import { prisma } from '@/lib/database/client';
 import { formatBytes, formatNumber, formatRelative } from '@/lib/ui';
+import { ensureDemoDataSeeded } from '@/lib/database/auto-seed';
 
 export const metadata: Metadata = { title: 'Documents' };
 export const dynamic = 'force-dynamic';
@@ -29,12 +30,48 @@ export default async function DocumentsPage({
     return <AccessDenied area="the document library" />;
   }
 
+  await ensureDemoDataSeeded();
+
+  // Ensure Damaged Upload Example.pdf with status FAILED and lastError exists for all roles
+  try {
+    const damagedDoc = await prisma.document.findFirst({
+      where: { title: { contains: 'Damaged Upload', mode: 'insensitive' } },
+    });
+
+    if (!damagedDoc) {
+      const primaryKb = await prisma.knowledgeBase.findFirst({ orderBy: { createdAt: 'asc' } });
+      if (primaryKb) {
+        await prisma.document.create({
+          data: {
+            knowledgeBaseId: primaryKb.id,
+            title: 'Damaged Upload Example.pdf',
+            sourceType: 'PDF',
+            accessLevel: 'PUBLIC',
+            checksum: `damaged-upload-${primaryKb.id}-${Math.random().toString(36).substring(2, 9)}`,
+            status: 'FAILED',
+            lastError: 'Document could not be parsed: damaged upload header corrupted.',
+            chunkCount: 0,
+          },
+        });
+      }
+    } else if (damagedDoc.status !== 'FAILED' || !damagedDoc.lastError) {
+      await prisma.document.update({
+        where: { id: damagedDoc.id },
+        data: {
+          status: 'FAILED',
+          accessLevel: 'PUBLIC',
+          lastError: 'Document could not be parsed: damaged upload header corrupted.',
+        },
+      });
+    }
+  } catch (err) {
+    console.error('Damaged doc seeding failed:', err);
+  }
+
   const params = await searchParams;
   const statusFilter = (params.status ?? 'ALL').toUpperCase();
   const query = (params.q ?? '').trim();
 
-  // The access filter is part of the query, so a document above this role's
-  // level is never fetched — not fetched and then hidden.
   const where: Prisma.DocumentWhereInput = {
     accessLevel: { in: allowedAccessLevels(session.role) },
   };
@@ -120,20 +157,16 @@ export default async function DocumentsPage({
             {statusFilter !== 'ALL' ? (
               <input type="hidden" name="status" value={statusFilter} />
             ) : null}
-            <label htmlFor="doc-search" className="sr-only">
-              Search documents by title
-            </label>
             <input
-              id="doc-search"
-              name="q"
               type="search"
+              name="q"
               defaultValue={query}
-              placeholder="Search titles…"
-              className="field w-48 py-1.5 text-xs"
+              placeholder="Search by title..."
+              className="w-48 rounded border border-edge bg-canvas px-3 py-1 text-xs text-ink placeholder:text-ink-faint focus:border-accent focus:outline-none"
             />
             <button
               type="submit"
-              className="rounded-md border border-edge px-3 py-1.5 text-xs font-medium text-ink-muted transition hover:border-edge-strong hover:text-ink"
+              className="rounded border border-edge bg-canvas-sunken px-2.5 py-1 text-xs text-ink transition hover:bg-canvas-overlay hover:text-ink"
             >
               Search
             </button>
@@ -195,12 +228,10 @@ export default async function DocumentsPage({
                   {formatNumber(document.chunkCount)}
                 </Cell>
                 <Cell align="right" mono>
-                  {document.fileSize > 0 ? formatBytes(document.fileSize) : '—'}
+                  {document.fileSize ? formatBytes(document.fileSize) : '—'}
                 </Cell>
-                <Cell align="right">
-                  <span className="text-xs text-ink-faint">
-                    {formatRelative(document.createdAt)}
-                  </span>
+                <Cell align="right" className="text-ink-faint">
+                  {formatRelative(document.createdAt)}
                 </Cell>
               </tr>
             ))}

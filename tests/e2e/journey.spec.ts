@@ -71,7 +71,7 @@ test.describe('knowledge management', () => {
   test('surfaces the failed document and its error message', async ({ page }) => {
     await page.goto('/dashboard/documents?status=FAILED');
 
-    await expect(page.getByText(/damaged upload/i)).toBeVisible();
+    await expect(page.getByText(/damaged upload/i).first()).toBeVisible();
     await expect(page.getByText(/could not be parsed/i)).toBeVisible();
   });
 

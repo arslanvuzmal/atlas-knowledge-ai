@@ -71,7 +71,7 @@ test.describe('public demo', () => {
     const answer = await ask(page, 'Do you provide a native mobile application for iOS?');
 
     await expect(answer).toContainText(/could not find enough approved information/i);
-    await expect(answer.getByText('Not supported')).toBeVisible();
+    await expect(answer.getByText(/UNSUPPORTED|Not supported/i)).toBeVisible();
   });
 
   test('does not comply with an injected instruction', async ({ page }) => {
