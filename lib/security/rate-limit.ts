@@ -28,8 +28,8 @@ export interface RateLimitResult {
 
 export const RATE_LIMITS = {
   login: { windowMs: 15 * 60_000, max: 10 },
-  chat: { windowMs: 60_000, max: 20 },
-  publicChat: { windowMs: 60_000, max: 10 },
+  chat: { windowMs: 60_000, max: 120 },
+  publicChat: { windowMs: 60_000, max: 120 },
   upload: { windowMs: 5 * 60_000, max: 20 },
   urlIngest: { windowMs: 10 * 60_000, max: 10 },
   feedback: { windowMs: 60_000, max: 30 },

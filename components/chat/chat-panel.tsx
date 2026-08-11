@@ -442,9 +442,9 @@ function AssistantTurn({
 }) {
   if (turn.errored) {
     return (
-      <div className="rounded border border-status-critical/40 bg-status-critical/10 p-3 font-mono text-xs text-status-critical">
+      <article className="rounded border border-status-critical/40 bg-status-critical/10 p-3 font-mono text-xs text-status-critical">
         {turn.content}
-      </div>
+      </article>
     );
   }
 
