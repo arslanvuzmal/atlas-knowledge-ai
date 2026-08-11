@@ -1,183 +1,153 @@
 'use client';
 
-import {
-  useCallback,
-  useEffect,
-  useRef,
-  useState,
-  type FormEvent,
-  type KeyboardEvent,
-} from 'react';
-import { apiFetch, cn } from '@/lib/ui';
-import { Badge } from '@/components/ui/primitives';
+import { useState, useRef, useEffect } from 'react';
+import { Badge, StatusDot } from '@/components/ui/primitives';
+import { cn } from '@/lib/ui';
+import type { ChatTurn, Citation, EvidencePacket } from './types';
+import { GROUNDING_META } from './types';
 import { ConfidenceMeter } from '@/components/dashboard/charts';
 import { CitationCard } from './citation-card';
 import { SourceDrawer } from './source-drawer';
-import { EscalationButton, FeedbackControls } from './feedback-controls';
-import {
-  GROUNDING_META,
-  type ChatResponse,
-  type ChatTurn,
-  type Citation,
-  type EvidencePacket,
-  type PipelineMetadata,
-} from './types';
+import { FeedbackControls, EscalationButton } from './feedback-controls';
 
-interface ChatPanelProps {
-  mode: 'authenticated' | 'public';
+export interface ChatPanelProps {
   initialConversationId?: string | null;
+  initialTurnHistory?: ChatTurn[];
   initialTurns?: ChatTurn[];
-  suggestions: string[];
-  roleLabel: string;
-  reachLabel: string;
-  demoMode: boolean;
-  onPipelineMeta?: (meta: PipelineMetadata) => void;
+  mode?: 'authenticated' | 'public';
+  suggestedQuestions?: string[];
+  suggestions?: string[];
+  roleLabel?: string;
+  reachLabel?: string;
+  demoMode?: boolean;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  onPipelineMeta?: (meta: any) => void;
 }
 
-const MAX_LENGTH = 2000;
-
 export function ChatPanel({
-  mode,
   initialConversationId = null,
-  initialTurns = [],
-  suggestions,
+  initialTurnHistory,
+  initialTurns,
+  mode = 'authenticated',
+  suggestedQuestions,
+  suggestions: suggestionsProp,
   roleLabel,
   reachLabel,
   demoMode,
-  onPipelineMeta,
 }: ChatPanelProps) {
-  const [turns, setTurns] = useState<ChatTurn[]>(initialTurns);
-  const [input, setInput] = useState('');
-  const [phase, setPhase] = useState<'idle' | 'retrieving' | 'answering'>('idle');
   const [conversationId, setConversationId] = useState<string | null>(initialConversationId);
+  const [turns, setTurns] = useState<ChatTurn[]>(initialTurns || initialTurnHistory || []);
+  const [input, setInput] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [phase, setPhase] = useState<'retrieving' | 'answering'>('retrieving');
   const [openCitation, setOpenCitation] = useState<Citation | null>(null);
   const [hoveredCitationOrdinal, setHoveredCitationOrdinal] = useState<number | null>(null);
-  const [error, setError] = useState<string | null>(null);
 
   const endRef = useRef<HTMLDivElement>(null);
-  const textareaRef = useRef<HTMLTextAreaElement>(null);
-  const phaseTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const suggestions = suggestionsProp ||
+    suggestedQuestions || [
+      'What is the refund window for an annual subscription?',
+      'Does the refund policy apply to monthly plans too?',
+      'What security and data privacy controls do you provide?',
+      'How do I request a custom SOC 2 compliance report?',
+    ];
 
   useEffect(() => {
-    endRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
-  }, [turns, phase]);
+    endRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [turns, busy]);
 
-  useEffect(
-    () => () => {
-      if (phaseTimer.current) clearTimeout(phaseTimer.current);
-    },
-    [],
-  );
+  const send = async (rawQuestion: string) => {
+    const question = rawQuestion.trim();
+    if (!question || busy) return;
 
-  const send = useCallback(
-    async (question: string) => {
-      const trimmed = question.trim();
-      if (trimmed.length === 0 || phase !== 'idle') return;
+    const userTurn: ChatTurn = {
+      id: `usr_${Date.now()}`,
+      role: 'user',
+      content: question,
+      createdAt: new Date().toISOString(),
+    };
 
-      setError(null);
-      setInput('');
+    setTurns((prev) => [...prev, userTurn]);
+    setInput('');
+    setBusy(true);
+    setPhase('retrieving');
 
-      const userTurn: ChatTurn = {
-        id: `local-${Date.now()}`,
-        role: 'user',
-        content: trimmed,
-        createdAt: new Date().toISOString(),
-      };
-      setTurns((current) => [...current, userTurn]);
+    try {
+      setTimeout(() => setPhase('answering'), 300);
 
-      setPhase('retrieving');
-      phaseTimer.current = setTimeout(() => setPhase('answering'), 550);
-
-      const result = await apiFetch<ChatResponse>('/api/chat', {
+      const response = await fetch('/api/chat', {
         method: 'POST',
-        body: JSON.stringify({ question: trimmed, conversationId }),
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          question,
+          conversationId,
+        }),
       });
 
-      if (phaseTimer.current) clearTimeout(phaseTimer.current);
-      setPhase('idle');
+      const data = await response.json();
 
-      if (!result.ok) {
-        setError(result.error);
-        setTurns((current) => [
-          ...current,
-          {
-            id: `error-${Date.now()}`,
-            role: 'assistant',
-            content: result.error,
-            errored: true,
-            createdAt: new Date().toISOString(),
-          },
-        ]);
-        return;
+      if (!response.ok || !data.ok) {
+        throw new Error(data.error || 'Failed to generate answer.');
       }
 
-      const data = result.data;
-      setConversationId(data.conversationId);
-      if (data.pipelineMeta) {
-        onPipelineMeta?.(data.pipelineMeta);
+      if (data.conversationId) {
+        setConversationId(data.conversationId);
       }
-      setTurns((current) => [
-        ...current,
+
+      const assistantTurn: ChatTurn = {
+        id: data.messageId || `ast_${Date.now()}`,
+        role: 'assistant',
+        content: data.answer.text,
+        confidence: data.answer.confidence,
+        grounding: data.answer.grounding,
+        citations: data.answer.citations,
+        evidence: data.answer.evidence,
+        relatedSources: data.relatedSources,
+        createdAt: new Date().toISOString(),
+      };
+
+      setTurns((prev) => [...prev, assistantTurn]);
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err);
+      setTurns((prev) => [
+        ...prev,
         {
-          id: data.messageId,
+          id: `err_${Date.now()}`,
           role: 'assistant',
-          content: data.answer,
-          grounding: data.grounding,
-          confidence: data.confidence,
-          citations: data.citations,
-          relatedSources: data.relatedSources,
-          escalationId: data.escalationId,
-          provider: data.provider,
-          model: data.model,
-          isDemo: data.isDemo,
+          content: `Unable to process question: ${message}`,
+          errored: true,
           createdAt: new Date().toISOString(),
-          evidence: data.evidence,
-          pipelineMeta: data.pipelineMeta,
         },
       ]);
-    },
-    [conversationId, phase, onPipelineMeta],
-  );
-
-  useEffect(() => {
-    function handleDemoAsk(event: CustomEvent<{ question: string }>) {
-      void send(event.detail.question);
+    } finally {
+      setBusy(false);
     }
-    window.addEventListener('demo:ask', handleDemoAsk as EventListener);
-    return () => window.removeEventListener('demo:ask', handleDemoAsk as EventListener);
-  }, [send]);
+  };
 
-  function handleSubmit(event: FormEvent) {
-    event.preventDefault();
-    void send(input);
-  }
-
-  function handleKeyDown(event: KeyboardEvent<HTMLTextAreaElement>) {
-    if (event.key === 'Enter' && !event.shiftKey) {
-      event.preventDefault();
-      void send(input);
-    }
-  }
-
-  const busy = phase !== 'idle';
-  const latestAssistantTurn = [...turns]
-    .reverse()
-    .find((t) => t.role === 'assistant' && !t.errored);
+  const latestAssistantTurn = turns.filter((t) => t.role === 'assistant' && !t.errored).pop();
 
   return (
-    <div className="flex h-full min-h-0 flex-col bg-canvas">
-      {/* Top Scope Utility Header */}
-      <div className="flex flex-wrap items-center justify-between border-b border-edge bg-canvas-sunken/60 px-4 py-2.5 sm:px-6">
+    <div className="flex h-full flex-col bg-canvas text-ink font-sans">
+      {/* Dynamic System Banner */}
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-edge bg-canvas-sunken/60 px-4 py-2 text-xs">
         <div className="flex items-center gap-2">
-          <Badge tone="accent">{roleLabel}</Badge>
-          <span className="font-mono text-xs text-ink-faint">{reachLabel}</span>
+          <StatusDot tone="good" label="RAG Engine Active" />
+          <span className="text-ink-faint">|</span>
+          <span className="text-ink-muted text-[11px]">
+            {roleLabel ? `${roleLabel} · ` : ''}
+            {reachLabel ? `${reachLabel} · ` : ''}
+            Role-based vector &amp; keyword hybrid retrieval with epistemic grounding
+          </span>
         </div>
-        <Badge tone="iris">
-          {latestAssistantTurn?.provider
-            ? `${latestAssistantTurn.provider.toUpperCase()} (${latestAssistantTurn.model ?? ''})`
-            : demoMode
-              ? 'DEMO DATASET'
-              : 'LIVE PIPELINE'}
+        <Badge tone="neutral">
+          {mode === 'public'
+            ? 'PUBLIC CORPUS DEMO'
+            : conversationId
+              ? `SESSION: ${conversationId.slice(0, 12)}…`
+              : demoMode
+                ? 'DEMO_MODE'
+                : 'LIVE PIPELINE'}
         </Badge>
       </div>
 
@@ -221,56 +191,38 @@ export function ChatPanel({
             </div>
           </div>
 
-          {/* Fixed Question Input Bar */}
-          <form
-            onSubmit={handleSubmit}
-            className="border-t border-edge bg-canvas-raised px-4 py-3 sm:px-6"
-          >
-            <div className="mx-auto max-w-2xl">
-              <label htmlFor="chat-input" className="sr-only">
-                Ask a question about your approved knowledge
-              </label>
-              <div className="flex items-end gap-2 rounded border border-edge bg-canvas-sunken p-2 focus-within:border-accent">
-                <textarea
-                  id="chat-input"
-                  ref={textareaRef}
-                  rows={1}
-                  value={input}
-                  maxLength={MAX_LENGTH}
-                  onChange={(event) => setInput(event.target.value)}
-                  onKeyDown={handleKeyDown}
-                  disabled={busy}
-                  placeholder="Ask a question about your approved knowledge…"
-                  className="max-h-36 min-h-[36px] flex-1 resize-y bg-transparent px-2 py-1.5 text-xs text-ink placeholder:text-ink-faint focus:outline-none disabled:opacity-60 font-sans"
-                />
-                <button
-                  type="submit"
-                  disabled={busy || input.trim().length === 0}
-                  className="shrink-0 rounded bg-accent px-3.5 py-1.5 font-mono text-xs font-bold text-ink-inverse transition hover:bg-accent-soft disabled:opacity-50"
-                >
-                  {busy ? 'Working…' : 'Ask'}
-                </button>
-              </div>
-
-              <div className="mt-1.5 flex flex-wrap items-center justify-between gap-2 font-mono text-[10.5px] text-ink-faint">
-                <span>Enter to send · Shift+Enter for newline</span>
-                <span className="tabular-nums">
-                  {input.length}/{MAX_LENGTH}
-                </span>
-              </div>
-
-              {error ? (
-                <p role="alert" className="mt-1.5 font-mono text-xs text-status-critical">
-                  {error}
-                </p>
-              ) : null}
-            </div>
-          </form>
+          {/* Chat Input Bar */}
+          <div className="border-t border-edge bg-canvas-sunken p-4">
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                void send(input);
+              }}
+              className="mx-auto flex max-w-2xl gap-2"
+            >
+              <input
+                type="text"
+                value={input}
+                onChange={(e) => setInput(e.target.value)}
+                placeholder="Ask a factual question about product, security, or enterprise policy..."
+                disabled={busy}
+                aria-label="Ask a question"
+                className="flex-1 rounded border border-edge bg-canvas px-3.5 py-2 text-xs text-ink placeholder:text-ink-faint focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent disabled:opacity-50 font-sans"
+              />
+              <button
+                type="submit"
+                disabled={busy || !input.trim()}
+                className="rounded bg-accent px-4 py-2 text-xs font-semibold text-white transition hover:bg-accent/90 disabled:opacity-40"
+              >
+                Send
+              </button>
+            </form>
+          </div>
         </div>
 
-        {/* Right Column (38% Evidence Inspector Panel) */}
-        <aside className="w-full lg:w-[400px] shrink-0 bg-canvas-raised flex flex-col min-h-0 overflow-y-auto border-t lg:border-t-0 border-edge p-4 sm:p-5 space-y-4">
-          <div className="flex items-center justify-between border-b border-edge pb-3">
+        {/* Right Column (38% Evidence Workspace) */}
+        <div className="hidden lg:flex lg:w-[38%] min-h-0 flex-col overflow-y-auto bg-canvas-sunken/30 p-4 border-t lg:border-t-0">
+          <div className="flex items-center justify-between border-b border-edge pb-3 mb-4">
             <div className="flex items-center gap-2">
               <span className="h-2 w-2 rounded-full bg-teal animate-pulse" />
               <h3 className="font-mono text-xs font-bold uppercase tracking-wider text-ink">
@@ -295,48 +247,24 @@ export function ChatPanel({
           )}
 
           {latestAssistantTurn?.citations && latestAssistantTurn.citations.length > 0 ? (
-            <div className="space-y-3">
-              <div className="flex items-center justify-between text-[10.5px] font-mono font-bold uppercase tracking-wider text-ink-faint">
-                <span>RETRIEVED CITATIONS</span>
-                <span>HOVER TO LINK</span>
-              </div>
+            <div className="mt-4 space-y-2">
+              <span className="font-mono text-[10.5px] font-bold uppercase tracking-wider text-ink-faint block">
+                Sources ({latestAssistantTurn.citations.length})
+              </span>
               <div className="space-y-2">
-                {latestAssistantTurn.citations.map((citation) => (
+                {latestAssistantTurn.citations.map((c) => (
                   <CitationCard
-                    key={citation.ordinal}
-                    citation={citation}
+                    key={c.ordinal}
+                    citation={c}
                     onOpen={setOpenCitation}
-                    highlighted={hoveredCitationOrdinal === citation.ordinal}
+                    highlighted={hoveredCitationOrdinal === c.ordinal}
                     onHover={setHoveredCitationOrdinal}
                   />
                 ))}
               </div>
             </div>
           ) : null}
-
-          {latestAssistantTurn?.relatedSources && latestAssistantTurn.relatedSources.length > 0 ? (
-            <div className="p-3 rounded border border-edge bg-canvas-sunken space-y-2">
-              <span className="font-mono text-[10.5px] font-bold uppercase tracking-wider text-ink-faint block">
-                RELATED APPROVED SOURCES
-              </span>
-              <ul className="space-y-1.5 text-xs text-ink-muted">
-                {latestAssistantTurn.relatedSources.map((s) => (
-                  <li
-                    key={s.documentId}
-                    className="flex items-center justify-between truncate border-b border-edge-subtle pb-1"
-                  >
-                    <span className="truncate text-ink font-medium">{s.title}</span>
-                    {s.sectionTitle ? (
-                      <span className="font-mono text-[10px] text-ink-faint shrink-0 ml-2">
-                        {s.sectionTitle}
-                      </span>
-                    ) : null}
-                  </li>
-                ))}
-              </ul>
-            </div>
-          ) : null}
-        </aside>
+        </div>
       </div>
 
       <SourceDrawer citation={openCitation} onClose={() => setOpenCitation(null)} />
@@ -550,7 +478,7 @@ function AssistantTurn({
       {turn.citations && turn.citations.length > 0 ? (
         <div className="pt-2 border-t border-edge space-y-2">
           <span className="font-mono text-[10px] font-bold uppercase tracking-wider text-ink-faint block">
-            CITED EVIDENCE SOURCES
+            Sources
           </span>
           <div className="grid gap-2 sm:grid-cols-2">
             {turn.citations.map((c) => (

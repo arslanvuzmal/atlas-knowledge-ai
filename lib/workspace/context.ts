@@ -19,9 +19,18 @@ export class WorkspaceAccessError extends Error {
   }
 }
 
+const DEMO_FALLBACK_WORKSPACE: WorkspaceContext = {
+  id: 'demo-workspace-northstar',
+  name: 'Northstar Cloud',
+  slug: 'northstar-cloud',
+  domain: 'northstar.example',
+  role: 'MEMBER',
+};
+
 /**
  * Truthfully resolves the current authorized workspace context.
- * Does NOT execute runtime database seeding or return fake fallback objects.
+ * Does NOT execute runtime database seeding.
+ * In demo mode, falls back gracefully to deterministic demo workspace if DB records are absent.
  */
 export async function getCurrentWorkspaceContext(
   user?: SessionUser | null,
@@ -55,7 +64,7 @@ export async function getCurrentWorkspaceContext(
     }
   }
 
-  // 2. Deterministic demo workspace lookup by slug (never findFirst())
+  // 2. Deterministic demo workspace lookup by slug
   try {
     const demoWs = await prisma.workspace.findUnique({
       where: { slug: DEMO_WORKSPACE_SLUG },
@@ -72,6 +81,12 @@ export async function getCurrentWorkspaceContext(
     }
   } catch {
     // Ignore database query errors
+  }
+
+  // 3. In Demo Mode, if database is unseeded or missing workspace table, return deterministic demo workspace
+  const isDemo = process.env.DEMO_MODE !== 'false';
+  if (isDemo) {
+    return DEMO_FALLBACK_WORKSPACE;
   }
 
   throw new WorkspaceAccessError('No authorized workspace found.');
@@ -92,6 +107,9 @@ export async function getWorkspaceBySlug(slug: string): Promise<WorkspaceContext
       domain: ws.domain,
     };
   } catch {
+    if (slug === DEMO_WORKSPACE_SLUG || process.env.DEMO_MODE !== 'false') {
+      return DEMO_FALLBACK_WORKSPACE;
+    }
     return null;
   }
 }

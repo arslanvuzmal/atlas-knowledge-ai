@@ -10,7 +10,10 @@ import { expect, test, type Page } from '@playwright/test';
 async function ask(page: Page, question: string) {
   const before = await page.locator('article').count();
   await page.getByLabel('Ask a question').fill(question);
-  await page.getByRole('button', { name: 'Ask', exact: true }).click();
+  await page
+    .getByRole('button', { name: /Send|Ask/i })
+    .first()
+    .click();
   await expect(page.locator('article')).toHaveCount(before + 1, { timeout: 45_000 });
   return page.locator('article').last();
 }
