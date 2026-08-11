@@ -49,7 +49,7 @@ export interface ListContactsOptions {
 
 export async function resolveIdentity(input: ResolveIdentityInput): Promise<ContactData> {
   const {
-    workspaceId,
+    workspaceId: inputWorkspaceId,
     visitorKey,
     email,
     name,
@@ -59,6 +59,14 @@ export async function resolveIdentity(input: ResolveIdentityInput): Promise<Cont
     source = 'CHAT',
     sourceDetail,
   } = input;
+
+  let workspaceId = inputWorkspaceId;
+  if (!workspaceId || workspaceId === 'demo-workspace-northstar') {
+    const dbWs = await prisma.workspace.findFirst().catch(() => null);
+    if (dbWs) {
+      workspaceId = dbWs.id;
+    }
+  }
 
   // 1. Match by Email if provided
   if (email && email.trim()) {
