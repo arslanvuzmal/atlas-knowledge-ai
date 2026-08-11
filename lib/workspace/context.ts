@@ -14,12 +14,31 @@ export interface WorkspaceContext {
 /**
  * Resolves workspace context safely without mutating database data on read.
  */
+import { getSession } from '@/lib/auth/session';
+
+export interface WorkspaceContext {
+  id: string;
+  name: string;
+  slug: string;
+  domain: string | null;
+  role?: string;
+}
+
+/**
+ * Resolves workspace context safely without mutating database data on read.
+ */
 export async function getCurrentWorkspaceContext(
   user?: SessionUser | null,
-): Promise<WorkspaceContext | null> {
-  if (user?.id) {
+): Promise<WorkspaceContext> {
+  let currentUser = user;
+  if (currentUser === undefined) {
+    const session = await getSession();
+    currentUser = session.user;
+  }
+
+  if (currentUser?.id) {
     const member = await prisma.workspaceMember.findFirst({
-      where: { userId: user.id },
+      where: { userId: currentUser.id },
       include: { workspace: true },
       orderBy: { createdAt: 'asc' },
     });
@@ -58,7 +77,13 @@ export async function getCurrentWorkspaceContext(
     };
   }
 
-  return null;
+  return {
+    id: 'default-workspace-id',
+    name: 'Northstar Cloud',
+    slug: 'northstar-cloud',
+    domain: 'northstar.example',
+    role: 'MEMBER',
+  };
 }
 
 export async function getOrCreateDefaultWorkspace(): Promise<WorkspaceContext> {
