@@ -327,25 +327,15 @@ export async function listContacts(workspaceId: string, options?: ListContactsOp
     }
 
     return { items, total };
-  } catch {
+  } catch (err: unknown) {
+    console.error('listContacts query failed:', err);
     try {
-      const [items, total] = await Promise.all([
-        prisma.contact.findMany({
-          where,
-          take: limit,
-          skip: offset,
-          orderBy: { createdAt: 'desc' },
-          include: {
-            company: { select: { id: true, name: true, domain: true } },
-          },
-        }),
-        prisma.contact.count({ where }),
-      ]);
-
-      return {
-        items: items.map((item) => ({ ...item, intelligence: null })),
-        total,
-      };
+      const fallbackItems = await prisma.contact.findMany({
+        take: limit,
+        skip: offset,
+        orderBy: { createdAt: 'desc' },
+      });
+      return { items: fallbackItems as ContactData[], total: fallbackItems.length };
     } catch {
       return { items: [], total: 0 };
     }
