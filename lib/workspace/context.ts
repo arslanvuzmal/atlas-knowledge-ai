@@ -1,7 +1,6 @@
 import { prisma } from '@/lib/database/client';
 import type { SessionUser } from '@/lib/auth/session';
 import { getSession } from '@/lib/auth/session';
-import { ensureDemoDataSeeded } from '@/lib/database/auto-seed';
 
 export interface WorkspaceContext {
   id: string;
@@ -11,36 +10,36 @@ export interface WorkspaceContext {
   role?: string;
 }
 
+export const DEMO_WORKSPACE_SLUG = 'northstar-cloud';
+
+export class WorkspaceAccessError extends Error {
+  constructor(message = 'No authorized workspace context found for caller.') {
+    super(message);
+    this.name = 'WorkspaceAccessError';
+  }
+}
+
 /**
- * Resolves workspace context safely without mutating database data on read.
- * Guaranteed to NEVER throw or return null.
+ * Truthfully resolves the current authorized workspace context.
+ * Does NOT execute runtime database seeding or return fake fallback objects.
  */
 export async function getCurrentWorkspaceContext(
   user?: SessionUser | null,
 ): Promise<WorkspaceContext> {
-  const fallback: WorkspaceContext = {
-    id: 'default-workspace-id',
-    name: 'Northstar Cloud',
-    slug: 'northstar-cloud',
-    domain: 'northstar.example',
-    role: 'MEMBER',
-  };
+  let currentUser = user;
+  if (currentUser === undefined) {
+    const session = await getSession().catch(() => null);
+    currentUser = session?.user ?? null;
+  }
 
-  try {
-    let currentUser = user;
-    if (currentUser === undefined) {
-      const session = await getSession().catch(() => null);
-      currentUser = session?.user ?? null;
-    }
-
-    if (currentUser?.id) {
-      const member = await prisma.workspaceMember
-        .findFirst({
-          where: { userId: currentUser.id },
-          include: { workspace: true },
-          orderBy: { createdAt: 'asc' },
-        })
-        .catch(() => null);
+  // 1. Authenticated user: resolve explicit membership in database
+  if (currentUser?.id) {
+    try {
+      const member = await prisma.workspaceMember.findFirst({
+        where: { userId: currentUser.id },
+        include: { workspace: true },
+        orderBy: { createdAt: 'asc' },
+      });
 
       if (member?.workspace) {
         return {
@@ -51,39 +50,31 @@ export async function getCurrentWorkspaceContext(
           role: member.role,
         };
       }
+    } catch {
+      // Ignore database query errors
     }
+  }
 
-    let firstWs = await prisma.workspace
-      .findFirst({
-        orderBy: { createdAt: 'asc' },
-      })
-      .catch(() => null);
+  // 2. Deterministic demo workspace lookup by slug (never findFirst())
+  try {
+    const demoWs = await prisma.workspace.findUnique({
+      where: { slug: DEMO_WORKSPACE_SLUG },
+    });
 
-    if (!firstWs) {
-      try {
-        const seeded = await ensureDemoDataSeeded();
-        firstWs = await prisma.workspace
-          .findUnique({ where: { id: seeded.workspaceId } })
-          .catch(() => null);
-      } catch {
-        // Ignore if seeding fails
-      }
-    }
-
-    if (firstWs) {
+    if (demoWs) {
       return {
-        id: firstWs.id,
-        name: firstWs.name,
-        slug: firstWs.slug,
-        domain: firstWs.domain,
+        id: demoWs.id,
+        name: demoWs.name,
+        slug: demoWs.slug,
+        domain: demoWs.domain,
         role: 'MEMBER',
       };
     }
-
-    return fallback;
   } catch {
-    return fallback;
+    // Ignore database query errors
   }
+
+  throw new WorkspaceAccessError('No authorized workspace found.');
 }
 
 export async function getOrCreateDefaultWorkspace(): Promise<WorkspaceContext> {

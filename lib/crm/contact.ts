@@ -1,5 +1,5 @@
 import { prisma } from '@/lib/database/client';
-import type { LifecycleStage, LeadStatus } from '@prisma/client';
+import type { LifecycleStage, LeadStatus, Prisma } from '@prisma/client';
 
 export interface ResolveIdentityInput {
   workspaceId: string;
@@ -29,6 +29,29 @@ export interface ContactData {
   ownerId: string | null;
   createdAt: Date;
   updatedAt: Date;
+}
+
+export interface ListContactsOptions {
+  query?: string;
+  lifecycleStage?: LifecycleStage;
+  leadStatus?: LeadStatus;
+  companyId?: string;
+  leadTier?: string;
+  minScore?: number;
+  maxScore?: number;
+  primaryIntent?: string;
+  source?: string;
+  sort?:
+    | 'activity_desc'
+    | 'activity_asc'
+    | 'score_desc'
+    | 'score_asc'
+    | 'created_desc'
+    | 'created_asc'
+    | 'name_asc'
+    | 'name_desc';
+  limit?: number;
+  offset?: number;
 }
 
 export function normalizeEmail(email: string): string {
@@ -66,7 +89,6 @@ export async function resolveIdentity(input: ResolveIdentityInput): Promise<Cont
     const parsedNames = parseName(name);
 
     if (contact) {
-      // Update missing fields
       const updated = await prisma.contact.update({
         where: { id: contact.id },
         data: {
@@ -84,7 +106,6 @@ export async function resolveIdentity(input: ResolveIdentityInput): Promise<Cont
       });
       return updated;
     } else {
-      // Create new contact from email
       const created = await prisma.contact.create({
         data: {
           workspaceId,
@@ -102,17 +123,18 @@ export async function resolveIdentity(input: ResolveIdentityInput): Promise<Cont
         },
       });
 
-      // Record CRM activity
-      await prisma.crmActivity.create({
-        data: {
-          workspaceId,
-          contactId: created.id,
-          type: 'CONTACT_IDENTIFIED',
-          title: 'Contact Identified',
-          description: `Identified contact ${created.displayName} (${created.primaryEmail})`,
-          metadata: { provenance: 'PROVIDED', source },
-        },
-      });
+      await prisma.crmActivity
+        .create({
+          data: {
+            workspaceId,
+            contactId: created.id,
+            type: 'CONTACT_IDENTIFIED',
+            title: 'Contact Identified',
+            description: `Identified contact ${created.displayName} (${created.primaryEmail})`,
+            metadata: { provenance: 'PROVIDED', source },
+          },
+        })
+        .catch(() => null);
 
       return created;
     }
@@ -153,15 +175,17 @@ export async function resolveIdentity(input: ResolveIdentityInput): Promise<Cont
         },
       });
 
-      await prisma.crmActivity.create({
-        data: {
-          workspaceId,
-          contactId: created.id,
-          type: 'VISITOR_CREATED',
-          title: 'Visitor Started Session',
-          description: `New visitor session started (${visitorKey})`,
-        },
-      });
+      await prisma.crmActivity
+        .create({
+          data: {
+            workspaceId,
+            contactId: created.id,
+            type: 'VISITOR_CREATED',
+            title: 'Visitor Started Session',
+            description: `New visitor session started (${visitorKey})`,
+          },
+        })
+        .catch(() => null);
 
       return created;
     }
@@ -192,30 +216,69 @@ function parseName(fullName?: string): { firstName: string | null; lastName: str
 }
 
 export async function getContactById(workspaceId: string, id: string): Promise<ContactData | null> {
-  return prisma.contact.findFirst({
-    where: { workspaceId, id },
-  });
+  try {
+    return await prisma.contact.findFirst({
+      where: { workspaceId, id },
+    });
+  } catch {
+    return null;
+  }
 }
 
-export async function listContacts(
-  workspaceId: string,
-  options?: {
-    query?: string;
-    lifecycleStage?: LifecycleStage;
-    limit?: number;
-    offset?: number;
-  },
-) {
-  const { query, lifecycleStage, limit = 50, offset = 0 } = options ?? {};
+export async function listContacts(workspaceId: string, options?: ListContactsOptions) {
+  const {
+    query,
+    lifecycleStage,
+    leadStatus,
+    companyId,
+    leadTier,
+    minScore,
+    maxScore,
+    primaryIntent,
+    source,
+    sort = 'activity_desc',
+    limit = 50,
+    offset = 0,
+  } = options ?? {};
 
-  const where: Record<string, unknown> = { workspaceId, archivedAt: null };
+  const where: Prisma.ContactWhereInput = { workspaceId, archivedAt: null };
+
   if (lifecycleStage) where.lifecycleStage = lifecycleStage;
-  if (query) {
+  if (leadStatus) where.leadStatus = leadStatus;
+  if (companyId) where.companyId = companyId;
+  if (leadTier) where.leadTier = leadTier;
+  if (source) where.source = source;
+
+  if (minScore !== undefined || maxScore !== undefined) {
+    where.leadScore = {
+      ...(minScore !== undefined ? { gte: minScore } : {}),
+      ...(maxScore !== undefined ? { lte: maxScore } : {}),
+    };
+  }
+
+  if (primaryIntent) {
+    where.intelligence = {
+      primaryIntent: { contains: primaryIntent, mode: 'insensitive' },
+    };
+  }
+
+  if (query && query.trim()) {
+    const q = query.trim();
     where.OR = [
-      { displayName: { contains: query, mode: 'insensitive' } },
-      { primaryEmail: { contains: query, mode: 'insensitive' } },
+      { displayName: { contains: q, mode: 'insensitive' } },
+      { primaryEmail: { contains: q, mode: 'insensitive' } },
+      { company: { name: { contains: q, mode: 'insensitive' } } },
     ];
   }
+
+  let orderBy: Prisma.ContactOrderByWithRelationInput = { lastActivityAt: 'desc' };
+  if (sort === 'score_desc') orderBy = { leadScore: 'desc' };
+  else if (sort === 'score_asc') orderBy = { leadScore: 'asc' };
+  else if (sort === 'created_desc') orderBy = { createdAt: 'desc' };
+  else if (sort === 'created_asc') orderBy = { createdAt: 'asc' };
+  else if (sort === 'name_asc') orderBy = { displayName: 'asc' };
+  else if (sort === 'name_desc') orderBy = { displayName: 'desc' };
+  else if (sort === 'activity_asc') orderBy = { lastActivityAt: 'asc' };
 
   try {
     const [items, total] = await Promise.all([
@@ -223,7 +286,7 @@ export async function listContacts(
         where,
         take: limit,
         skip: offset,
-        orderBy: { lastActivityAt: 'desc' },
+        orderBy,
         include: {
           company: { select: { id: true, name: true, domain: true } },
           intelligence: true,

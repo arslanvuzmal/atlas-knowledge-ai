@@ -1,6 +1,7 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { Badge, Panel, StatusDot } from '@/components/ui/primitives';
 
 export interface InboxConversation {
@@ -39,50 +40,160 @@ export interface InboxConversation {
 }
 
 export function InboxWorkspace({ conversations }: { conversations: InboxConversation[] }) {
-  const [selectedId, setSelectedId] = useState<string>(conversations[0]?.id ?? '');
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const initialConvId = searchParams.get('conversation');
+
+  const [selectedId, setSelectedId] = useState<string>(() => {
+    if (initialConvId && conversations.some((c) => c.id === initialConvId)) {
+      return initialConvId;
+    }
+    return conversations[0]?.id ?? '';
+  });
+
+  const [searchQuery, setSearchQuery] = useState('');
+  const [filterTab, setFilterTab] = useState<'all' | 'needs_human' | 'high_intent'>('all');
+
   const [composerMode, setComposerMode] = useState<'reply' | 'note'>('reply');
   const [replyText, setReplyText] = useState('');
-  const [notes, setNotes] = useState<{ id: string; content: string; createdAt: string }[]>([]);
+  const [isSending, setIsSending] = useState(false);
+  const [isAiLoading, setIsAiLoading] = useState(false);
+  const [aiMetadata, setAiMetadata] = useState<{
+    confidence?: number;
+    grounding?: string;
+    citations?: { title: string; excerpt: string; accessLevel: string }[];
+  } | null>(null);
+
+  const [statusMessage, setStatusMessage] = useState<{
+    type: 'success' | 'error';
+    text: string;
+  } | null>(null);
+
+  // Sync selection if URL search parameter changes
+  useEffect(() => {
+    const paramId = searchParams.get('conversation');
+    if (paramId && conversations.some((c) => c.id === paramId)) {
+      setSelectedId(paramId);
+    }
+  }, [searchParams, conversations]);
 
   const selected = conversations.find((c) => c.id === selectedId) ?? conversations[0];
   const contact = selected?.contact;
   const intel = contact?.intelligence;
 
-  const handleSendReply = () => {
-    if (!replyText.trim()) return;
-    if (composerMode === 'note') {
-      setNotes((prev) => [
-        ...prev,
-        {
-          id: `note_${Date.now()}`,
-          content: replyText,
-          createdAt: new Date().toLocaleTimeString(),
-        },
-      ]);
-    } else {
-      if (selected) {
-        selected.messages.push({
-          id: `msg_${Date.now()}`,
-          role: 'ASSISTANT',
-          content: replyText,
-          createdAt: new Date().toLocaleTimeString(),
-        });
+  // Filter conversations
+  const filteredConversations = conversations.filter((c) => {
+    // 1. Text Search Filter
+    if (searchQuery.trim()) {
+      const q = searchQuery.toLowerCase();
+      const nameMatch = c.contact?.displayName.toLowerCase().includes(q);
+      const emailMatch = c.contact?.primaryEmail?.toLowerCase().includes(q);
+      const companyMatch = c.contact?.company?.name.toLowerCase().includes(q);
+      const titleMatch = c.title.toLowerCase().includes(q);
+      const msgMatch = c.messages.some((m) => m.content.toLowerCase().includes(q));
+
+      if (!nameMatch && !emailMatch && !companyMatch && !titleMatch && !msgMatch) {
+        return false;
       }
     }
-    setReplyText('');
+
+    // 2. Tab Filter
+    if (filterTab === 'needs_human') {
+      return c.status === 'NEEDS_HUMAN' || c.status === 'ESCALATED';
+    }
+    if (filterTab === 'high_intent') {
+      return (
+        (c.contact?.leadScore ?? 0) >= 70 ||
+        (c.contact?.intelligence?.primaryIntent ?? '').toLowerCase().includes('purchase') ||
+        (c.contact?.intelligence?.primaryIntent ?? '').toLowerCase().includes('evalu')
+      );
+    }
+
+    return true;
+  });
+
+  const selectConversation = (id: string) => {
+    setSelectedId(id);
+    setAiMetadata(null);
+    setStatusMessage(null);
+    router.replace(`/dashboard/inbox?conversation=${id}`, { scroll: false });
   };
 
-  const handleAiDraft = (type: 'shorten' | 'clarify' | 'find') => {
-    if (type === 'shorten') {
-      setReplyText((prev) => (prev ? prev.slice(0, Math.floor(prev.length * 0.6)) + '…' : ''));
-    } else if (type === 'clarify') {
-      setReplyText(
-        'Thank you for reaching out! To help us tailor the Team plan for your 80 users, could you confirm if you require SAML SSO integration?',
-      );
-    } else if (type === 'find') {
-      setReplyText(
-        'Based on approved Northstar Cloud documentation: Annual subscriptions include a 30-day money-back guarantee, while monthly subscriptions allow 14-day refund windows.',
-      );
+  const handleSendReply = async () => {
+    if (!replyText.trim() || !selected || isSending) return;
+
+    setIsSending(true);
+    setStatusMessage(null);
+
+    try {
+      const res = await fetch(`/api/conversations/${selected.id}/reply`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          content: replyText.trim(),
+          mode: composerMode,
+        }),
+      });
+
+      const data = await res.json();
+      if (!res.ok || !data.ok) {
+        throw new Error(data.error || 'Failed to post response.');
+      }
+
+      setReplyText('');
+      setAiMetadata(null);
+      setStatusMessage({
+        type: 'success',
+        text:
+          composerMode === 'reply' ? 'Outbound reply sent successfully.' : 'Internal note posted.',
+      });
+
+      router.refresh();
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      setStatusMessage({ type: 'error', text: msg });
+    } finally {
+      setIsSending(false);
+    }
+  };
+
+  const handleAiAction = async (action: 'find' | 'clarify' | 'shorten') => {
+    if (!selected || isAiLoading) return;
+
+    setIsAiLoading(true);
+    setStatusMessage(null);
+
+    try {
+      const res = await fetch(`/api/conversations/${selected.id}/ai-draft`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action,
+          currentDraft: replyText,
+        }),
+      });
+
+      const data = await res.json();
+      if (!res.ok || !data.ok) {
+        throw new Error(data.error || 'Failed to generate AI draft.');
+      }
+
+      if (data.draftText) {
+        setReplyText(data.draftText);
+      }
+
+      if (action === 'find') {
+        setAiMetadata({
+          confidence: data.confidence,
+          grounding: data.grounding,
+          citations: data.citations,
+        });
+      }
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      setStatusMessage({ type: 'error', text: msg });
+    } finally {
+      setIsAiLoading(false);
     }
   };
 
@@ -90,69 +201,96 @@ export function InboxWorkspace({ conversations }: { conversations: InboxConversa
     <div className="h-[calc(100vh-8rem)] grid grid-cols-1 lg:grid-cols-12 gap-4">
       {/* LEFT COLUMN: Conversation List & Filters (3 Cols) */}
       <Panel className="lg:col-span-3 flex flex-col h-full overflow-hidden p-0 border border-edge">
-        <div className="p-3 border-b border-edge bg-canvas-sunken">
+        <div className="p-3 border-b border-edge bg-canvas-sunken space-y-2">
           <input
             type="text"
-            placeholder="Search conversations..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            placeholder="Search name, email, company, message..."
             className="w-full px-3 py-1.5 text-xs rounded border border-edge bg-canvas text-ink focus:outline-none focus:border-accent"
           />
-          <div className="flex gap-2 mt-2">
-            <span className="text-[11px] font-medium text-accent cursor-pointer">
+          <div className="flex gap-2">
+            <button
+              onClick={() => setFilterTab('all')}
+              className={`text-[11px] font-medium transition ${
+                filterTab === 'all' ? 'text-accent font-bold' : 'text-ink-faint hover:text-ink'
+              }`}
+            >
               All ({conversations.length})
-            </span>
-            <span className="text-[11px] text-ink-faint cursor-pointer hover:text-ink">
+            </button>
+            <button
+              onClick={() => setFilterTab('needs_human')}
+              className={`text-[11px] font-medium transition ${
+                filterTab === 'needs_human'
+                  ? 'text-accent font-bold'
+                  : 'text-ink-faint hover:text-ink'
+              }`}
+            >
               Needs Human
-            </span>
-            <span className="text-[11px] text-ink-faint cursor-pointer hover:text-ink">
+            </button>
+            <button
+              onClick={() => setFilterTab('high_intent')}
+              className={`text-[11px] font-medium transition ${
+                filterTab === 'high_intent'
+                  ? 'text-accent font-bold'
+                  : 'text-ink-faint hover:text-ink'
+              }`}
+            >
               High Intent
-            </span>
+            </button>
           </div>
         </div>
 
         <div className="flex-1 overflow-y-auto divide-y divide-edge-subtle">
-          {conversations.map((c) => {
-            const isSelected = c.id === selectedId;
-            const lastMsg = c.messages[c.messages.length - 1];
-            return (
-              <button
-                key={c.id}
-                onClick={() => setSelectedId(c.id)}
-                className={`w-full text-left p-3.5 transition-colors ${
-                  isSelected
-                    ? 'bg-canvas-overlay border-l-2 border-accent'
-                    : 'hover:bg-canvas-sunken'
-                }`}
-              >
-                <div className="flex items-center justify-between gap-2 mb-1">
-                  <span className="text-xs font-semibold text-ink truncate">
-                    {c.contact?.displayName || 'Anonymous Visitor'}
-                  </span>
-                  <span className="text-[10px] text-ink-faint shrink-0">
-                    {new Date(c.updatedAt).toLocaleTimeString([], {
-                      hour: '2-digit',
-                      minute: '2-digit',
-                    })}
-                  </span>
-                </div>
+          {filteredConversations.length === 0 ? (
+            <div className="p-4 text-center text-xs text-ink-faint">
+              No conversations match criteria
+            </div>
+          ) : (
+            filteredConversations.map((c) => {
+              const isSelected = c.id === selectedId;
+              const lastMsg = c.messages[c.messages.length - 1];
+              return (
+                <button
+                  key={c.id}
+                  onClick={() => selectConversation(c.id)}
+                  className={`w-full text-left p-3.5 transition-colors ${
+                    isSelected
+                      ? 'bg-canvas-overlay border-l-2 border-accent'
+                      : 'hover:bg-canvas-sunken'
+                  }`}
+                >
+                  <div className="flex items-center justify-between gap-2 mb-1">
+                    <span className="text-xs font-semibold text-ink truncate">
+                      {c.contact?.displayName || 'Anonymous Visitor'}
+                    </span>
+                    <span className="text-[10px] text-ink-faint shrink-0">
+                      {new Date(c.updatedAt).toLocaleTimeString([], {
+                        hour: '2-digit',
+                        minute: '2-digit',
+                      })}
+                    </span>
+                  </div>
 
-                <div className="text-[11px] text-ink-muted truncate mb-2">
-                  {c.contact?.company?.name ? `${c.contact.company.name} · ` : ''}
-                  {lastMsg?.content || c.title}
-                </div>
+                  <div className="text-[11px] text-ink-muted truncate mb-2">
+                    {c.contact?.company?.name ? `${c.contact.company.name} · ` : ''}
+                    {lastMsg?.content || c.title}
+                  </div>
 
-                <div className="flex items-center gap-1.5 flex-wrap">
-                  {c.contact?.leadScore ? (
-                    <Badge tone={c.contact.leadScore >= 70 ? 'good' : 'neutral'}>
-                      {c.contact.leadScore} pts
-                    </Badge>
-                  ) : null}
-                  {c.contact?.intelligence?.primaryIntent ? (
-                    <Badge tone="accent">{c.contact.intelligence.primaryIntent}</Badge>
-                  ) : null}
-                </div>
-              </button>
-            );
-          })}
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    {c.contact?.leadScore ? (
+                      <Badge tone={c.contact.leadScore >= 70 ? 'good' : 'neutral'}>
+                        {c.contact.leadScore} pts
+                      </Badge>
+                    ) : null}
+                    {c.contact?.intelligence?.primaryIntent ? (
+                      <Badge tone="accent">{c.contact.intelligence.primaryIntent}</Badge>
+                    ) : null}
+                  </div>
+                </button>
+              );
+            })
+          )}
         </div>
       </Panel>
 
@@ -186,45 +324,90 @@ export function InboxWorkspace({ conversations }: { conversations: InboxConversa
 
             {/* Message Thread */}
             <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-canvas-sunken/40">
-              {selected.messages.map((m) => (
-                <div
-                  key={m.id}
-                  className={`flex flex-col ${m.role === 'USER' ? 'items-start' : 'items-end'}`}
-                >
-                  <div
-                    className={`max-w-[88%] p-3 rounded-lg text-xs leading-relaxed ${
-                      m.role === 'USER'
-                        ? 'bg-canvas-overlay border border-edge text-ink'
-                        : 'bg-accent/10 border border-accent/30 text-ink'
-                    }`}
-                  >
-                    <div className="text-[10px] font-semibold text-ink-faint mb-1">
-                      {m.role === 'USER' ? contact?.displayName || 'Customer' : 'Atlas Assistant'}
-                    </div>
-                    {m.content}
+              {selected.messages.map((m) => {
+                const isInternalNote =
+                  m.role === 'SYSTEM' || m.content.startsWith('[Internal Note]');
+                const displayContent = m.content.replace(/^\[Internal Note\]\s*/, '');
 
-                    {m.citations && m.citations.length > 0 ? (
-                      <div className="mt-2 pt-2 border-t border-edge-subtle text-[10px] text-ink-faint">
-                        <span className="font-medium">Sources:</span>{' '}
-                        {m.citations.map((c) => c.excerpt.slice(0, 50) + '...').join(' | ')}
+                if (isInternalNote) {
+                  return (
+                    <div
+                      key={m.id}
+                      className="p-2.5 rounded bg-status-warning/10 border border-status-warning/30 text-xs text-ink"
+                    >
+                      <div className="flex justify-between text-[10px] text-status-warning font-semibold mb-1">
+                        <span>Internal Note</span>
+                        <span>
+                          {new Date(m.createdAt).toLocaleTimeString([], {
+                            hour: '2-digit',
+                            minute: '2-digit',
+                          })}
+                        </span>
                       </div>
-                    ) : null}
-                  </div>
-                </div>
-              ))}
+                      {displayContent}
+                    </div>
+                  );
+                }
 
-              {notes.map((n) => (
-                <div
-                  key={n.id}
-                  className="p-2.5 rounded bg-status-warning/10 border border-status-warning/30 text-xs text-ink"
-                >
-                  <span className="font-semibold text-status-warning text-[10px]">
-                    Internal Note:
-                  </span>{' '}
-                  {n.content}
-                </div>
-              ))}
+                return (
+                  <div
+                    key={m.id}
+                    className={`flex flex-col ${m.role === 'USER' ? 'items-start' : 'items-end'}`}
+                  >
+                    <div
+                      className={`max-w-[88%] p-3 rounded-lg text-xs leading-relaxed ${
+                        m.role === 'USER'
+                          ? 'bg-canvas-overlay border border-edge text-ink'
+                          : 'bg-accent/10 border border-accent/30 text-ink'
+                      }`}
+                    >
+                      <div className="text-[10px] font-semibold text-ink-faint mb-1">
+                        {m.role === 'USER'
+                          ? contact?.displayName || 'Customer'
+                          : 'Atlas Assistant / Agent'}
+                      </div>
+                      {displayContent}
+
+                      {m.citations && m.citations.length > 0 ? (
+                        <div className="mt-2 pt-2 border-t border-edge-subtle text-[10px] text-ink-faint">
+                          <span className="font-medium text-accent">Sources:</span>{' '}
+                          {m.citations.map((c) => c.excerpt.slice(0, 50) + '...').join(' | ')}
+                        </div>
+                      ) : null}
+                    </div>
+                  </div>
+                );
+              })}
             </div>
+
+            {/* AI RAG Retrieval Draft Metadata Notice */}
+            {aiMetadata ? (
+              <div className="mx-3 my-2 p-2.5 rounded bg-accent-wash border border-accent/30 text-xs text-ink space-y-1">
+                <div className="flex items-center justify-between font-bold text-[11px] text-accent">
+                  <span>AI Approved RAG Retrieval Draft</span>
+                  <span>Confidence: {aiMetadata.confidence}%</span>
+                </div>
+                {aiMetadata.citations && aiMetadata.citations.length > 0 ? (
+                  <div className="text-[10.5px] text-ink-muted">
+                    <span className="font-semibold">Sources ({aiMetadata.citations.length}):</span>{' '}
+                    {aiMetadata.citations.map((c) => `${c.title} (${c.accessLevel})`).join(' · ')}
+                  </div>
+                ) : null}
+              </div>
+            ) : null}
+
+            {/* Status Message Notice */}
+            {statusMessage ? (
+              <div
+                className={`mx-3 my-1 p-2 rounded text-xs font-mono ${
+                  statusMessage.type === 'success'
+                    ? 'bg-status-good/10 text-status-good border border-status-good/30'
+                    : 'bg-status-bad/10 text-status-bad border border-status-bad/30'
+                }`}
+              >
+                {statusMessage.text}
+              </div>
+            ) : null}
 
             {/* Composer */}
             <div className="p-3 border-t border-edge bg-canvas">
@@ -246,16 +429,18 @@ export function InboxWorkspace({ conversations }: { conversations: InboxConversa
 
                 <div className="flex gap-1.5 text-[10px]">
                   <button
-                    onClick={() => handleAiDraft('find')}
-                    className="px-2 py-1 rounded border border-edge hover:bg-canvas-overlay text-ink-muted"
+                    disabled={isAiLoading}
+                    onClick={() => handleAiAction('find')}
+                    className="px-2 py-1 rounded border border-edge hover:bg-canvas-overlay text-ink-muted disabled:opacity-50"
                   >
-                    Find Approved Answer
+                    {isAiLoading ? 'Retrieving…' : 'Find Approved Answer'}
                   </button>
                   <button
-                    onClick={() => handleAiDraft('clarify')}
-                    className="px-2 py-1 rounded border border-edge hover:bg-canvas-overlay text-ink-muted"
+                    disabled={isAiLoading}
+                    onClick={() => handleAiAction('clarify')}
+                    className="px-2 py-1 rounded border border-edge hover:bg-canvas-overlay text-ink-muted disabled:opacity-50"
                   >
-                    Clarify
+                    {isAiLoading ? 'Synthesizing…' : 'Clarify'}
                   </button>
                 </div>
               </div>
@@ -273,13 +458,16 @@ export function InboxWorkspace({ conversations }: { conversations: InboxConversa
 
               <div className="flex items-center justify-between mt-2">
                 <span className="text-[10px] text-ink-faint">
-                  Human controls final outbound reply
+                  {composerMode === 'reply'
+                    ? 'Outbound delivery logged in audit trail'
+                    : 'Internal notes visible only to workspace members'}
                 </span>
                 <button
+                  disabled={isSending || !replyText.trim()}
                   onClick={handleSendReply}
-                  className="px-4 py-1.5 text-xs font-semibold rounded bg-accent text-white hover:bg-accent/90"
+                  className="px-4 py-1.5 text-xs font-semibold rounded bg-accent text-white hover:bg-accent/90 disabled:opacity-50"
                 >
-                  {composerMode === 'reply' ? 'Send Reply' : 'Post Note'}
+                  {isSending ? 'Sending…' : composerMode === 'reply' ? 'Send Reply' : 'Post Note'}
                 </button>
               </div>
             </div>
@@ -396,14 +584,24 @@ export function InboxWorkspace({ conversations }: { conversations: InboxConversa
                 Workflows
               </h3>
               <div className="space-y-1.5 text-xs">
-                <div className="p-2 rounded border border-edge bg-canvas flex items-center justify-between">
-                  <span>Open Deal</span>
-                  <span className="font-medium text-accent">$24,000 ARR</span>
-                </div>
-                <div className="p-2 rounded border border-edge bg-canvas flex items-center justify-between">
-                  <span>Pending Task</span>
-                  <span className="font-medium text-status-warning">Follow up demo call</span>
-                </div>
+                {selected.deals && selected.deals.length > 0 ? (
+                  selected.deals.map((d) => (
+                    <div
+                      key={d.id}
+                      className="p-2 rounded border border-edge bg-canvas flex items-center justify-between"
+                    >
+                      <span>{d.name}</span>
+                      <span className="font-medium text-accent">
+                        ${(d.amount || 0).toLocaleString()}
+                      </span>
+                    </div>
+                  ))
+                ) : (
+                  <div className="p-2 rounded border border-edge bg-canvas flex items-center justify-between">
+                    <span>Active Workspace Conversation</span>
+                    <span className="font-medium text-status-good">Connected</span>
+                  </div>
+                )}
               </div>
             </div>
           </>
