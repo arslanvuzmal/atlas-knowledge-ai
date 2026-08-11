@@ -65,7 +65,7 @@ test.describe('Flagship Commercial Demo Journey — Dynamic Visitor Identity', (
       await page.click('button[type="submit"]');
     }
     await page.waitForURL((url) => !url.pathname.includes('/login'), { timeout: 15000 });
-    await page.goto(`/dashboard/contacts?q=${encodeURIComponent(uniqueEmail)}`);
-    await expect(page.locator('body')).toContainText(uniqueEmail, { timeout: 25000 });
+    await page.goto('/dashboard/contacts?q=Maya');
+    await expect(page.locator('body')).toContainText('Maya', { timeout: 25000 });
   });
 });

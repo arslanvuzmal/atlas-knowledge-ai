@@ -104,6 +104,7 @@ test.describe('public demo', () => {
   test('keeps context across a follow-up question', async ({ page }) => {
     await page.goto('/demo');
     await ask(page, 'What is the refund window for an annual subscription?');
+    await page.waitForTimeout(1500);
     const followUp = await ask(page, 'Does that apply to monthly plans too?');
 
     await expect(followUp).toContainText(/14 days|monthly|30 days|refund/i);
