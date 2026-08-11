@@ -57,15 +57,15 @@ async function callWithTimeout<T>(
   }
 }
 
-async function retrying<T>(operation: () => Promise<T>): Promise<T> {
+async function retrying<T>(operation: () => Promise<T>, maxAttempts = MAX_ATTEMPTS): Promise<T> {
   let lastError: unknown;
-  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt += 1) {
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
     try {
       return await operation();
     } catch (error) {
       lastError = error;
       const retryable = error instanceof LlmError && error.retryable;
-      if (!retryable || attempt === MAX_ATTEMPTS) break;
+      if (!retryable || attempt === maxAttempts) break;
       await new Promise((resolve) =>
         setTimeout(resolve, 500 * 2 ** (attempt - 1) + Math.random() * 250),
       );
@@ -252,43 +252,67 @@ export class AnthropicLlmProvider extends BaseRemoteProvider {
   }
 }
 
+const geminiClientCache = new Map<string, GoogleGenAI>();
+
+const INTERACTIVE_TIMEOUT_MS = 18_000;
+const MAX_INTERACTIVE_ATTEMPTS = 2;
+
 export class GeminiLlmProvider extends BaseRemoteProvider {
   readonly name = 'gemini' as const;
   readonly model: string;
 
   constructor(private readonly config: ProviderConfig) {
     super();
-    this.model = config.model || 'gemini-3.6-flash';
+    this.model = config.model || 'gemini-2.5-flash';
   }
 
-  async generate(request: GenerationRequest): Promise<GenerationResult> {
+  private getClient(): GoogleGenAI {
+    const key = this.config.apiKey!;
+    if (!geminiClientCache.has(key)) {
+      geminiClientCache.set(key, new GoogleGenAI({ apiKey: key }));
+    }
+    return geminiClientCache.get(key)!;
+  }
+
+  async generate(
+    request: GenerationRequest & { enableLiveSearch?: boolean },
+  ): Promise<GenerationResult> {
     if (!this.config.apiKey) {
       throw new LlmError('GEMINI_API_KEY is not configured.', 'configuration', false);
     }
     const started = Date.now();
-    const ai = new GoogleGenAI({ apiKey: this.config.apiKey });
+    const ai = this.getClient();
 
     try {
-      const response = await retrying(() =>
-        callWithTimeout(
-          async () => {
-            return await ai.models.generateContent({
-              model: this.model,
-              contents: [
-                { role: 'user', parts: [{ text: request.system }] },
-                ...request.messages.map((message) => ({
-                  role: message.role === 'assistant' ? 'model' : 'user',
-                  parts: [{ text: message.content }],
-                })),
-              ],
-              config: {
+      const response = await retrying(
+        () =>
+          callWithTimeout(
+            async () => {
+              const genConfig: {
+                maxOutputTokens?: number;
+                tools?: Array<{ googleSearch: Record<string, never> }>;
+              } = {
                 maxOutputTokens: request.maxTokens,
-              },
-            });
-          },
-          DEFAULT_TIMEOUT_MS,
-          request.signal,
-        ),
+              };
+              if (request.enableLiveSearch) {
+                genConfig.tools = [{ googleSearch: {} }];
+              }
+              return await ai.models.generateContent({
+                model: this.model,
+                contents: [
+                  { role: 'user', parts: [{ text: request.system }] },
+                  ...request.messages.map((message) => ({
+                    role: message.role === 'assistant' ? 'model' : 'user',
+                    parts: [{ text: message.content }],
+                  })),
+                ],
+                config: genConfig,
+              });
+            },
+            INTERACTIVE_TIMEOUT_MS,
+            request.signal,
+          ),
+        MAX_INTERACTIVE_ATTEMPTS,
       );
 
       const text = response.text ?? '';

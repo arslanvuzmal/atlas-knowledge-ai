@@ -3,12 +3,7 @@ import { prisma } from '@/lib/database/client';
 import { env } from '@/lib/env';
 
 /**
- * Runtime-tunable retrieval configuration.
- *
- * Defaults come from the environment; an administrator can override them at
- * runtime through the retrieval settings page, and the override is persisted in
- * SystemSetting. Values are validated on write *and* on read, so a hand-edited
- * database row cannot put the pipeline into an impossible state.
+ * Runtime-tunable retrieval configuration with 30-second in-memory cache.
  */
 
 export const RETRIEVAL_SETTINGS_KEY = 'retrieval.configuration';
@@ -55,14 +50,28 @@ export function defaultRetrievalSettings(): RetrievalSettings {
   };
 }
 
+let cachedRetrievalSettings: RetrievalSettings | null = null;
+let retrievalCacheExpiry = 0;
+
 export async function getRetrievalSettings(): Promise<RetrievalSettings> {
+  const now = Date.now();
+  if (cachedRetrievalSettings && now < retrievalCacheExpiry) {
+    return cachedRetrievalSettings;
+  }
+
   const defaults = defaultRetrievalSettings();
   try {
     const row = await prisma.systemSetting.findUnique({ where: { key: RETRIEVAL_SETTINGS_KEY } });
-    if (!row) return defaults;
+    if (!row) {
+      cachedRetrievalSettings = defaults;
+      retrievalCacheExpiry = now + 30_000;
+      return defaults;
+    }
     const parsed = retrievalSettingsSchema.safeParse(row.value);
-    // A stored value that no longer validates is ignored rather than obeyed.
-    return parsed.success ? parsed.data : defaults;
+    const settings = parsed.success ? parsed.data : defaults;
+    cachedRetrievalSettings = settings;
+    retrievalCacheExpiry = now + 30_000;
+    return settings;
   } catch {
     return defaults;
   }
@@ -88,6 +97,9 @@ export async function saveRetrievalSettings(
     update: { value: parsed.data, updatedBy },
   });
 
+  cachedRetrievalSettings = parsed.data;
+  retrievalCacheExpiry = Date.now() + 30_000;
+
   return { ok: true, settings: parsed.data };
 }
 
@@ -98,7 +110,6 @@ export async function saveRetrievalSettings(
 export const MODEL_SETTINGS_KEY = 'models.configuration';
 
 export const modelSettingsSchema = z.object({
-  /** Empty string means "follow the environment variable". */
   llmProviderOverride: z.string().max(40),
   embeddingProviderOverride: z.string().max(40),
   maxAnswerTokens: z.number().int().min(128).max(4096),
@@ -116,12 +127,27 @@ export function defaultModelSettings(): ModelSettings {
   };
 }
 
+let cachedModelSettings: ModelSettings | null = null;
+let modelCacheExpiry = 0;
+
 export async function getModelSettings(): Promise<ModelSettings> {
+  const now = Date.now();
+  if (cachedModelSettings && now < modelCacheExpiry) {
+    return cachedModelSettings;
+  }
+
   try {
     const row = await prisma.systemSetting.findUnique({ where: { key: MODEL_SETTINGS_KEY } });
-    if (!row) return defaultModelSettings();
+    if (!row) {
+      cachedModelSettings = defaultModelSettings();
+      modelCacheExpiry = now + 30_000;
+      return cachedModelSettings;
+    }
     const parsed = modelSettingsSchema.safeParse(row.value);
-    return parsed.success ? parsed.data : defaultModelSettings();
+    const settings = parsed.success ? parsed.data : defaultModelSettings();
+    cachedModelSettings = settings;
+    modelCacheExpiry = now + 30_000;
+    return settings;
   } catch {
     return defaultModelSettings();
   }
@@ -145,5 +171,9 @@ export async function saveModelSettings(
     create: { key: MODEL_SETTINGS_KEY, value: parsed.data, updatedBy },
     update: { value: parsed.data, updatedBy },
   });
+
+  cachedModelSettings = parsed.data;
+  modelCacheExpiry = Date.now() + 30_000;
+
   return { ok: true, settings: parsed.data };
 }

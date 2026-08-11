@@ -14,21 +14,9 @@ import { suggestRelatedSources } from '@/lib/retrieval/search';
 import type { RetrievalSettings } from '@/lib/retrieval/settings';
 import type { Role } from '@prisma/client';
 import { logger } from '@/lib/observability/logger';
+import { detectMaterialConflicts } from '@/lib/rag/conflict';
 
-/**
- * Answer generation.
- *
- * The order of operations is what makes the "no fabricated citations" and "say
- * so when you do not know" guarantees hold:
- *
- *   1. Grounding is decided from the *retrieval evidence*, before the model is
- *      called. An UNSUPPORTED verdict short-circuits generation entirely, so
- *      there is no opportunity for a fluent answer to talk its way past a
- *      failed retrieval.
- *   2. The model only ever sees sources that survived the access filter.
- *   3. Whatever comes back is passed through citation validation, which deletes
- *      any marker that does not correspond to a supplied source.
- */
+export type AnswerSourceType = 'APPROVED_KNOWLEDGE' | 'EXTERNAL_LIVE' | 'GENERAL_MODEL' | 'LOCAL';
 
 export interface AnswerRequest {
   question: string;
@@ -42,7 +30,8 @@ export interface AnswerRequest {
 
 export interface EvidencePacket {
   /** Plain-language description of evidence strength. */
-  confidenceLabel: 'Strong evidence' | 'Partial evidence' | 'Insufficient evidence';
+  confidenceLabel:
+    'Strong evidence' | 'Partial evidence' | 'Insufficient evidence' | 'N/A' | 'Current Web Data';
   /** Number of distinct passages cited. */
   supportingPassages: number;
   /** Number of distinct documents cited. */
@@ -64,6 +53,7 @@ export interface AnswerResult {
   model: string;
   latencyMs: number;
   isDemo: boolean;
+  sourceType?: AnswerSourceType;
   /** True when the retrieval or the answer warrants human review. */
   escalationSuggested: boolean;
   escalationReason: string | null;
@@ -86,17 +76,12 @@ function buildHistoryMessages(history: ConversationTurn[], limit: number): ChatM
     .filter((turn) => turn.role === 'USER' || turn.role === 'ASSISTANT')
     .map((turn) => ({
       role: turn.role === 'USER' ? ('user' as const) : ('assistant' as const),
-      // A previous assistant turn is conversational context only. The system
-      // prompt already forbids treating it as evidence, and it carries no
-      // citation markers into the new prompt.
       content:
         turn.role === 'ASSISTANT'
           ? turn.content.replace(/\[\d{1,2}\]/g, '').slice(0, 1200)
           : turn.content.slice(0, 1200),
     }));
 }
-
-import { detectMaterialConflicts } from '@/lib/rag/conflict';
 
 function detectConflicts(
   chunks: RerankedChunk[],
@@ -129,6 +114,234 @@ function unsupportedAnswer(
   return { text, related };
 }
 
+/**
+ * General Knowledge generation path (bypasses RAG).
+ */
+export async function generateGeneralAnswer(request: {
+  question: string;
+  history: ConversationTurn[];
+  modelSettings: { llmProviderOverride: string; maxAnswerTokens: number; temperature: number };
+  traceId?: string;
+}): Promise<AnswerResult> {
+  const started = Date.now();
+  const provider = getLlmProvider(request.modelSettings.llmProviderOverride);
+
+  const system =
+    'You are Atlas, a helpful general-purpose assistant integrated with a governed enterprise knowledge platform.\n' +
+    'Answer ordinary general-knowledge and conversational questions naturally, clearly and concisely.\n' +
+    "Do not pretend general knowledge came from the organization's approved knowledge base.\n" +
+    'Do not fabricate Atlas citations.\n' +
+    "If a question asks about this organization's policies, pricing, products, security, employees, internal processes or approved documents, the application will route it through governed RAG instead.\n" +
+    'If information is likely to be current or time-sensitive, do not guess; the application will route it to a live-information tool.';
+
+  const messages: ChatMessage[] = [
+    ...buildHistoryMessages(request.history, 6),
+    { role: 'user', content: request.question },
+  ];
+
+  try {
+    const generation = await provider.generate({
+      system,
+      messages,
+      maxTokens: request.modelSettings.maxAnswerTokens,
+      temperature: request.modelSettings.temperature,
+    });
+
+    return {
+      text: generation.text,
+      grounding: 'SUPPORTED',
+      confidence: 1.0,
+      citations: [],
+      provider: provider.name,
+      model: provider.model,
+      latencyMs: generation.latencyMs,
+      isDemo: provider.isDemo,
+      sourceType: 'GENERAL_MODEL',
+      escalationSuggested: false,
+      escalationReason: null,
+      relatedSources: [],
+      evidence: {
+        confidenceLabel: 'N/A',
+        supportingPassages: 0,
+        supportingDocuments: 0,
+        coverage: 1,
+        conflictDetected: false,
+        conflictingDocuments: [],
+      },
+      diagnostics: {
+        invalidCitationMarkers: [],
+        usedFallbackCitations: false,
+        promptTokens: 0,
+        truncatedSources: 0,
+        generationFailed: false,
+      },
+    };
+  } catch (error) {
+    logger.error('General answer generation failed', { provider: provider.name, error });
+    return {
+      text: publicMessageForLlmError(error),
+      grounding: 'UNSUPPORTED',
+      confidence: 0,
+      citations: [],
+      provider: provider.name,
+      model: provider.model,
+      latencyMs: Date.now() - started,
+      isDemo: provider.isDemo,
+      sourceType: 'GENERAL_MODEL',
+      escalationSuggested: false,
+      escalationReason: null,
+      relatedSources: [],
+      evidence: {
+        confidenceLabel: 'N/A',
+        supportingPassages: 0,
+        supportingDocuments: 0,
+        coverage: 0,
+        conflictDetected: false,
+        conflictingDocuments: [],
+      },
+      diagnostics: {
+        invalidCitationMarkers: [],
+        usedFallbackCitations: false,
+        promptTokens: 0,
+        truncatedSources: 0,
+        generationFailed: true,
+      },
+    };
+  }
+}
+
+/**
+ * Live External Information path (bypasses RAG, uses Google Search / live tools).
+ */
+export async function generateLiveAnswer(request: {
+  question: string;
+  history: ConversationTurn[];
+  modelSettings: { llmProviderOverride: string; maxAnswerTokens: number; temperature: number };
+  missingLocation?: boolean;
+  traceId?: string;
+}): Promise<AnswerResult> {
+  const started = Date.now();
+
+  if (request.missingLocation) {
+    return {
+      text: 'Sure — which city or location?',
+      grounding: 'SUPPORTED',
+      confidence: 1.0,
+      citations: [],
+      provider: 'local',
+      model: 'intent-router',
+      latencyMs: Date.now() - started,
+      isDemo: false,
+      sourceType: 'LOCAL',
+      escalationSuggested: false,
+      escalationReason: null,
+      relatedSources: [],
+      evidence: {
+        confidenceLabel: 'N/A',
+        supportingPassages: 0,
+        supportingDocuments: 0,
+        coverage: 1,
+        conflictDetected: false,
+        conflictingDocuments: [],
+      },
+      diagnostics: {
+        invalidCitationMarkers: [],
+        usedFallbackCitations: false,
+        promptTokens: 0,
+        truncatedSources: 0,
+        generationFailed: false,
+      },
+    };
+  }
+
+  const provider = getLlmProvider(request.modelSettings.llmProviderOverride);
+
+  const system =
+    'You are Atlas, an intelligent assistant equipped with current real-time search capabilities.\n' +
+    'Answer live, external, or current-world questions clearly and accurately using current information.\n' +
+    'Keep your response concise and up to date.';
+
+  const messages: ChatMessage[] = [
+    ...buildHistoryMessages(request.history, 4),
+    { role: 'user', content: request.question },
+  ];
+
+  try {
+    const generation = await (
+      provider as unknown as {
+        generate: (req: Record<string, unknown>) => Promise<{ text: string; latencyMs: number }>;
+      }
+    ).generate({
+      system,
+      messages,
+      maxTokens: request.modelSettings.maxAnswerTokens,
+      temperature: request.modelSettings.temperature,
+      enableLiveSearch: true,
+    });
+
+    return {
+      text: generation.text,
+      grounding: 'SUPPORTED',
+      confidence: 1.0,
+      citations: [],
+      provider: provider.name,
+      model: provider.model,
+      latencyMs: generation.latencyMs,
+      isDemo: provider.isDemo,
+      sourceType: 'EXTERNAL_LIVE',
+      escalationSuggested: false,
+      escalationReason: null,
+      relatedSources: [],
+      evidence: {
+        confidenceLabel: 'Current Web Data',
+        supportingPassages: 0,
+        supportingDocuments: 0,
+        coverage: 1,
+        conflictDetected: false,
+        conflictingDocuments: [],
+      },
+      diagnostics: {
+        invalidCitationMarkers: [],
+        usedFallbackCitations: false,
+        promptTokens: 0,
+        truncatedSources: 0,
+        generationFailed: false,
+      },
+    };
+  } catch (error) {
+    logger.error('Live answer generation failed', { provider: provider.name, error });
+    return {
+      text: publicMessageForLlmError(error),
+      grounding: 'UNSUPPORTED',
+      confidence: 0,
+      citations: [],
+      provider: provider.name,
+      model: provider.model,
+      latencyMs: Date.now() - started,
+      isDemo: provider.isDemo,
+      sourceType: 'EXTERNAL_LIVE',
+      escalationSuggested: false,
+      escalationReason: null,
+      relatedSources: [],
+      evidence: {
+        confidenceLabel: 'N/A',
+        supportingPassages: 0,
+        supportingDocuments: 0,
+        coverage: 0,
+        conflictDetected: false,
+        conflictingDocuments: [],
+      },
+      diagnostics: {
+        invalidCitationMarkers: [],
+        usedFallbackCitations: false,
+        promptTokens: 0,
+        truncatedSources: 0,
+        generationFailed: true,
+      },
+    };
+  }
+}
+
 export async function generateAnswer(request: AnswerRequest): Promise<AnswerResult> {
   const { retrieval, settings, modelSettings, role } = request;
   const started = Date.now();
@@ -146,11 +359,12 @@ export async function generateAnswer(request: AnswerRequest): Promise<AnswerResu
       model: 'not-invoked',
       latencyMs: Date.now() - started,
       isDemo: false,
+      sourceType: 'APPROVED_KNOWLEDGE',
       escalationSuggested: true,
       escalationReason:
         retrieval.chunks.length === 0
-          ? 'No approved source matched the question.'
-          : 'Retrieval confidence was below the configured threshold.',
+          ? 'No permitted chunks were found.'
+          : 'Retrieval confidence was below the minimum threshold.',
       relatedSources: related,
       evidence,
       diagnostics: {
@@ -205,6 +419,7 @@ export async function generateAnswer(request: AnswerRequest): Promise<AnswerResu
       model: provider.model,
       latencyMs: Date.now() - started,
       isDemo: provider.isDemo,
+      sourceType: 'APPROVED_KNOWLEDGE',
       escalationSuggested: true,
       escalationReason: `The language model provider failed: ${
         error instanceof LlmError ? error.kind : 'unknown error'
@@ -226,7 +441,6 @@ export async function generateAnswer(request: AnswerRequest): Promise<AnswerResu
   const validated = validateCitations(rawText, prompt.sources, scores);
 
   if (validated.invalidMarkers.length > 0) {
-    // Worth alerting on: it means the model referenced a source it was not given.
     logger.warn('Model produced citation markers with no matching source', {
       provider: provider.name,
       invalidMarkers: validated.invalidMarkers,
@@ -250,8 +464,6 @@ export async function generateAnswer(request: AnswerRequest): Promise<AnswerResu
   citations = citations.slice(0, settings.citationCount);
 
   // --- 5. Final grounding ----------------------------------------------------
-  // An answer the model itself declined to give is unsupported regardless of
-  // what the retrieval scores suggested.
   let grounding: GroundingLevel = modelDeclinedToAnswer ? 'UNSUPPORTED' : retrieval.grounding;
   if (grounding === 'SUPPORTED' && citations.length === 0) {
     grounding = 'PARTIALLY_SUPPORTED';
@@ -297,6 +509,7 @@ export async function generateAnswer(request: AnswerRequest): Promise<AnswerResu
     model: provider.model,
     latencyMs: providerLatency,
     isDemo: provider.isDemo,
+    sourceType: 'APPROVED_KNOWLEDGE',
     escalationSuggested,
     escalationReason,
     relatedSources:
@@ -312,9 +525,6 @@ export async function generateAnswer(request: AnswerRequest): Promise<AnswerResu
   };
 }
 
-/**
- * Builds the evidence packet for the UI.
- */
 function buildEvidencePacket(
   retrieval: RetrievalResult,
   citations: ValidatedCitation[],
@@ -339,7 +549,6 @@ function buildEvidencePacket(
   };
 }
 
-/** Suggested reply an operator can start from when handling an escalation. */
 export function buildSuggestedReply(question: string, answer: AnswerResult): string {
   if (answer.grounding === 'UNSUPPORTED') {
     return `Thank you for your question about "${question.slice(0, 120)}". Our knowledge base does not currently cover this, so a member of the team is reviewing it and will follow up with a definitive answer.`;

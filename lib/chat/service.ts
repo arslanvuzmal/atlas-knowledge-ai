@@ -1,25 +1,26 @@
-import type { Role } from '@prisma/client';
+import type { Role, AccessLevel } from '@prisma/client';
 import { prisma } from '@/lib/database/client';
-import { generateAnswer, buildSuggestedReply, type AnswerResult } from '@/lib/ai/answer';
+import {
+  generateAnswer,
+  generateGeneralAnswer,
+  generateLiveAnswer,
+  buildSuggestedReply,
+  type AnswerResult,
+  type AnswerSourceType,
+} from '@/lib/ai/answer';
 import { getModelSettings, getRetrievalSettings } from '@/lib/retrieval/settings';
 import { retrieve, type RetrievalResult } from '@/lib/retrieval/search';
 import type { ConversationTurn } from '@/lib/retrieval/query';
 import { detectPromptInjection } from '@/lib/security/prompt-injection';
 import { recordAudit } from '@/lib/security/audit';
 import { logger, newCorrelationId } from '@/lib/observability/logger';
-import { detectIntent, getConversationalResponse } from './intent';
+import { routeMessage, getConversationalResponse, type ChatRoute } from './intent';
 import { resolveIdentity } from '@/lib/crm/contact';
 import { getCurrentWorkspaceContext } from '@/lib/workspace/context';
 import { enqueueOutboxEvent, processOutboxEvents } from '@/lib/outbox/worker';
 
 /**
  * Chat orchestration and persistence.
- *
- * Retrieval and generation are pure; this module is what makes a turn durable:
- * it owns the conversation, the two message rows, the citations, and the
- * retrieval trace. The trace deliberately stores chunk *ids* and never chunk
- * text, so an operator reading retrieval logs cannot see content they would not
- * be allowed to retrieve themselves.
  */
 
 export interface AskInput {
@@ -39,6 +40,8 @@ export interface AskOutput {
   traceId: string;
   injectionFlagged: boolean;
   escalationId: string | null;
+  route: ChatRoute;
+  sourceType: AnswerSourceType;
   retrieval: {
     vectorCandidates: number;
     keywordCandidates: number;
@@ -52,7 +55,7 @@ export interface AskOutput {
   };
 }
 
-const MAX_HISTORY_MESSAGES = 20;
+const MAX_HISTORY_MESSAGES = 10;
 
 async function resolveConversation(input: AskInput): Promise<{ id: string; isNew: boolean }> {
   if (input.conversationId) {
@@ -61,9 +64,6 @@ async function resolveConversation(input: AskInput): Promise<{ id: string; isNew
       select: { id: true, userId: true, anonymousKey: true },
     });
 
-    // Ownership is verified here rather than trusted from the request body: a
-    // conversation id is guessable, and history must not be readable or
-    // extendable by anyone else.
     if (existing) {
       const ownedByUser = input.userId && existing.userId === input.userId;
       const ownedByAnon =
@@ -121,21 +121,20 @@ export async function ask(input: AskInput): Promise<AskOutput> {
     });
   }
 
-  // --- Conversation history --------------------------------------------------
+  // --- History Retrieval (Most recent 10 messages, reversed in memory) ------
   const priorMessages = await prisma.message.findMany({
     where: { conversationId },
-    orderBy: { createdAt: 'asc' },
+    orderBy: { createdAt: 'desc' },
     take: MAX_HISTORY_MESSAGES,
     select: { role: true, content: true },
   });
 
-  const history: ConversationTurn[] = priorMessages.map((message) => ({
+  const history: ConversationTurn[] = priorMessages.reverse().map((message) => ({
     role: message.role,
     content: message.content,
   }));
 
-  // Persisted before retrieval so the question survives even if generation
-  // fails partway through.
+  // Persist user question
   await prisma.message.create({
     data: {
       conversationId,
@@ -145,23 +144,23 @@ export async function ask(input: AskInput): Promise<AskOutput> {
     },
   });
 
-  // --- Intent Routing (fast path for conversational messages) ----------------
-  const intentResult = detectIntent(input.question, history);
-  const isConversational = intentResult.shouldSkipRag;
+  // --- Multi-lane Route Determination ----------------------------------------
+  const routeRes = routeMessage(input.question, history);
 
-  log.debug('Intent detected', {
-    intent: intentResult.intent,
-    confidence: intentResult.confidence,
-    isConversational,
-    reasoning: intentResult.reasoning,
+  log.debug('Route determined', {
+    route: routeRes.route,
+    confidence: routeRes.confidence,
+    reason: routeRes.reason,
+    cleanQuestion: routeRes.cleanQuestion,
   });
 
   let answer: AnswerResult;
   let retrieval: RetrievalResult | null = null;
 
-  if (isConversational) {
-    // Tier 0: Fast conversational response - no RAG
-    const conversationalText = getConversationalResponse(intentResult.intent);
+  if (routeRes.route === 'LOCAL_CONVERSATION' || routeRes.route === 'HUMAN_REQUEST') {
+    const conversationalText = getConversationalResponse(
+      routeRes.route === 'HUMAN_REQUEST' ? 'HUMAN_REQUEST' : 'GREETING',
+    );
     answer = {
       text: conversationalText,
       grounding: 'SUPPORTED',
@@ -171,14 +170,16 @@ export async function ask(input: AskInput): Promise<AskOutput> {
       model: 'intent-router',
       latencyMs: Date.now() - startedAt,
       isDemo: false,
-      escalationSuggested: false,
-      escalationReason: null,
+      sourceType: 'LOCAL',
+      escalationSuggested: routeRes.route === 'HUMAN_REQUEST',
+      escalationReason:
+        routeRes.route === 'HUMAN_REQUEST' ? 'User explicitly requested human operator.' : null,
       relatedSources: [],
       evidence: {
-        confidenceLabel: 'Insufficient evidence',
+        confidenceLabel: 'N/A',
         supportingPassages: 0,
         supportingDocuments: 0,
-        coverage: 0,
+        coverage: 1,
         conflictDetected: false,
         conflictingDocuments: [],
       },
@@ -190,10 +191,25 @@ export async function ask(input: AskInput): Promise<AskOutput> {
         generationFailed: false,
       },
     };
+  } else if (routeRes.route === 'GENERAL_KNOWLEDGE') {
+    answer = await generateGeneralAnswer({
+      question: routeRes.cleanQuestion || input.question,
+      history,
+      modelSettings,
+      traceId,
+    });
+  } else if (routeRes.route === 'LIVE_EXTERNAL') {
+    answer = await generateLiveAnswer({
+      question: routeRes.cleanQuestion || input.question,
+      history,
+      modelSettings,
+      missingLocation: routeRes.missingLocation,
+      traceId,
+    });
   } else {
-    // --- Retrieval -------------------------------------------------------------
+    // Governed RAG: ORGANIZATIONAL_KNOWLEDGE or FOLLOW_UP_ORGANIZATIONAL
     retrieval = await retrieve({
-      question: input.question,
+      question: routeRes.cleanQuestion || input.question,
       role: input.role,
       knowledgeBaseId: input.knowledgeBaseId ?? null,
       history,
@@ -201,9 +217,8 @@ export async function ask(input: AskInput): Promise<AskOutput> {
       traceId,
     });
 
-    // --- Generation ------------------------------------------------------------
     answer = await generateAnswer({
-      question: input.question,
+      question: routeRes.cleanQuestion || input.question,
       role: input.role,
       retrieval,
       history,
@@ -215,7 +230,7 @@ export async function ask(input: AskInput): Promise<AskOutput> {
 
   const totalLatency = Date.now() - startedAt;
 
-  // --- Persist the assistant turn -------------------------------------------
+  // --- Persist Assistant Message --------------------------------------------
   const assistantMessage = await prisma.message.create({
     data: {
       conversationId,
@@ -240,7 +255,7 @@ export async function ask(input: AskInput): Promise<AskOutput> {
     },
   });
 
-  // --- Retrieval log (only for RAG queries, not conversational) ------------
+  // --- Retrieval Log Persistence -------------------------------------------
   if (retrieval) {
     await prisma.retrievalLog.create({
       data: {
@@ -248,60 +263,12 @@ export async function ask(input: AskInput): Promise<AskOutput> {
         query: input.question,
         rewrittenQuery: retrieval.preparation.rewritten,
         retrievedChunkIds: retrieval.chunks.map((chunk) => chunk.id),
-        rerankedChunkIds: answer.citations.map((citation) => citation.chunkId),
-        candidateCount: retrieval.stats.fusedCandidates,
-        filteredCount: retrieval.stats.afterAccessFilter,
-        confidence: answer.confidence,
-        grounding: answer.grounding,
-        accessLevel: retrieval.allowedLevels[retrieval.allowedLevels.length - 1] ?? 'PUBLIC',
-        latencyMs: totalLatency,
-        traceId,
+        accessLevel: input.role as unknown as AccessLevel,
       },
     });
   }
 
-  await prisma.conversation.update({
-    where: { id: conversationId },
-    data: { updatedAt: new Date() },
-  });
-
-  // --- Automatic escalation --------------------------------------------------
-  let escalationId: string | null = null;
-  if (answer.escalationSuggested || injectionFlagged) {
-    const reason = injectionFlagged
-      ? `Question matched prompt-injection patterns (${assessment.categories.join(', ')}).`
-      : (answer.escalationReason ?? 'The assistant could not answer confidently.');
-
-    const escalation = await prisma.escalation.create({
-      data: {
-        conversationId,
-        userId: input.userId ?? null,
-        reason,
-        summary: buildConversationSummary(history, input.question, answer),
-        suggestedReply: buildSuggestedReply(input.question, answer),
-        priority: injectionFlagged ? 'HIGH' : answer.grounding === 'UNSUPPORTED' ? 'NORMAL' : 'LOW',
-        status: 'OPEN',
-      },
-      select: { id: true },
-    });
-    escalationId = escalation.id;
-
-    await prisma.conversation.update({
-      where: { id: conversationId },
-      data: { status: 'ESCALATED' },
-    });
-
-    await recordAudit({
-      action: 'escalation.create',
-      entityType: 'Escalation',
-      entityId: escalation.id,
-      userId: input.userId ?? null,
-      ip: input.ip ?? null,
-      newData: { reason, automatic: true, grounding: answer.grounding },
-      metadata: { traceId },
-    });
-  }
-
+  // --- Audit Log Persistence ------------------------------------------------
   await recordAudit({
     action: 'chat.query',
     entityType: 'Conversation',
@@ -309,25 +276,46 @@ export async function ask(input: AskInput): Promise<AskOutput> {
     userId: input.userId ?? null,
     ip: input.ip ?? null,
     metadata: {
-      traceId,
+      role: input.role,
+      questionLength: input.question.length,
       grounding: answer.grounding,
       confidence: answer.confidence,
-      citationCount: answer.citations.length,
       latencyMs: totalLatency,
-      provider: answer.provider,
-      retrieved: retrieval ? retrieval.stats.fusedCandidates : 0,
+      injectionFlagged,
+      route: routeRes.route,
     },
   });
 
-  log.info('Chat turn completed', {
-    conversationId,
-    grounding: answer.grounding,
-    confidence: answer.confidence,
-    latencyMs: totalLatency,
-    citations: answer.citations.length,
-  });
+  // --- Escalation Management ------------------------------------------------
+  let escalationId: string | null = null;
+  if (answer.escalationSuggested || injectionFlagged) {
+    const existingEscalation = await prisma.escalation.findFirst({
+      where: { conversationId, status: { in: ['OPEN', 'IN_PROGRESS'] } },
+    });
 
-  // --- Contact & Outbox Integration (non-blocking secondary workflow) ------
+    if (!existingEscalation) {
+      const created = await prisma.escalation.create({
+        data: {
+          conversationId,
+          userId: input.userId ?? null,
+          priority: injectionFlagged ? 'HIGH' : 'NORMAL',
+          reason: answer.escalationReason ?? 'Customer or system escalation created.',
+          summary: buildConversationSummary(history, input.question, answer),
+          suggestedReply: buildSuggestedReply(input.question, answer),
+        },
+      });
+      escalationId = created.id;
+    } else {
+      escalationId = existingEscalation.id;
+    }
+
+    await prisma.conversation.update({
+      where: { id: conversationId },
+      data: { status: 'ESCALATED' },
+    });
+  }
+
+  // --- Async Non-Blocking CRM & Outbox Enrichment ----------------------------
   try {
     let workspaceId: string | null = null;
     if (input.knowledgeBaseId) {
@@ -339,7 +327,7 @@ export async function ask(input: AskInput): Promise<AskOutput> {
     }
     if (!workspaceId) {
       const ws = await getCurrentWorkspaceContext().catch(() => null);
-      workspaceId = ws?.id ?? 'demo-workspace-northstar';
+      workspaceId = ws?.id ?? null;
     }
 
     if (workspaceId) {
@@ -392,8 +380,7 @@ export async function ask(input: AskInput): Promise<AskOutput> {
     });
   }
 
-  // Track knowledge gaps from low-confidence or unsupported answers
-  // This is secondary analytics work - must never crash the primary chat request
+  // --- Async Knowledge Gap Tracking (Only for Governed RAG queries) ----------
   if (retrieval) {
     try {
       await trackKnowledgeGap({
@@ -411,18 +398,13 @@ export async function ask(input: AskInput): Promise<AskOutput> {
         },
         answer: {
           grounding: answer.grounding,
-          confidence: answer.confidence,
-          citations: answer.citations.map((c) => ({
-            documentId: c.documentId,
-            documentTitle: c.documentTitle,
-            excerpt: c.excerpt,
-          })),
+          text: answer.text,
+          escalationSuggested: answer.escalationSuggested,
         },
-        userId: input.userId ?? null,
       });
-    } catch (error) {
-      log.warn('Knowledge gap tracking failed (non-blocking)', {
-        error: error instanceof Error ? error.message : String(error),
+    } catch (kgError) {
+      log.warn('Knowledge-gap tracking failed (non-blocking)', {
+        error: kgError instanceof Error ? kgError.message : String(kgError),
       });
     }
   }
@@ -434,83 +416,55 @@ export async function ask(input: AskInput): Promise<AskOutput> {
     traceId,
     injectionFlagged,
     escalationId,
-    retrieval: retrieval
-      ? {
-          vectorCandidates: retrieval.stats.vectorCandidates,
-          keywordCandidates: retrieval.stats.keywordCandidates,
-          fusedCandidates: retrieval.stats.fusedCandidates,
-          afterAccessFilter: retrieval.stats.afterAccessFilter,
-          rerankedCount: retrieval.stats.rerankedCount,
-          hybrid: retrieval.stats.hybrid,
-          droppedByPostFilter: retrieval.stats.droppedByPostFilter,
-          latencyMs: retrieval.stats.latencyMs,
-          allowedLevels: retrieval.allowedLevels,
-        }
-      : {
-          vectorCandidates: 0,
-          keywordCandidates: 0,
-          fusedCandidates: 0,
-          afterAccessFilter: 0,
-          rerankedCount: 0,
-          hybrid: false,
-          droppedByPostFilter: 0,
-          latencyMs: 0,
-          allowedLevels: [],
-        },
+    route: routeRes.route,
+    sourceType: answer.sourceType ?? 'APPROVED_KNOWLEDGE',
+    retrieval: {
+      vectorCandidates: retrieval?.stats.vectorCandidates ?? 0,
+      keywordCandidates: retrieval?.stats.keywordCandidates ?? 0,
+      fusedCandidates: retrieval?.stats.fusedCandidates ?? 0,
+      afterAccessFilter: retrieval?.stats.afterAccessFilter ?? 0,
+      rerankedCount: retrieval?.stats.rerankedCount ?? 0,
+      hybrid: retrieval?.stats.hybrid ?? false,
+      droppedByPostFilter: retrieval?.stats.droppedByPostFilter ?? 0,
+      latencyMs: retrieval?.stats.latencyMs ?? 0,
+      allowedLevels: retrieval?.allowedLevels ?? [],
+    },
   };
 }
 
 /**
- * Detects and tracks knowledge gaps from low-confidence or unsupported answers.
- * Clusters similar questions to identify recurring knowledge gaps.
+ * Tracks knowledge gaps from low-confidence or unsupported answers.
  */
-async function trackKnowledgeGap(input: {
+export async function trackKnowledgeGap(params: {
   question: string;
   role: Role;
   knowledgeBaseId: string | null;
   retrieval: {
     confidence: number;
     grounding: string;
-    chunks: { documentId: string; documentTitle: string; content: string }[];
+    chunks: Array<{ documentId: string; documentTitle: string; content: string }>;
   };
   answer: {
     grounding: string;
-    confidence: number;
-    citations: { documentId: string; documentTitle: string; excerpt: string }[];
+    text: string;
+    escalationSuggested: boolean;
   };
-  userId: string | null;
 }): Promise<void> {
-  const { question, role, knowledgeBaseId, retrieval, answer, userId } = input;
-  void role;
-  void retrieval;
-  void userId;
+  const { question, knowledgeBaseId, answer } = params;
 
-  // Only track gaps for unsupported or low-confidence answers
-  if (answer.grounding === 'SUPPORTED' && answer.confidence >= 0.7) {
+  if (answer.grounding !== 'UNSUPPORTED' && !answer.escalationSuggested) {
     return;
   }
 
-  // Normalize question for clustering
-  const normalizedQuestion = question
-    .toLowerCase()
-    .replace(/[^a-z0-9\s]/g, '')
-    .replace(/\s+/g, ' ')
-    .trim();
-
-  if (!normalizedQuestion) return;
-
-  // Find the knowledge base ID if not provided
   let kbId = knowledgeBaseId;
   if (!kbId) {
-    const primary = await prisma.knowledgeBase.findFirst({
-      orderBy: { createdAt: 'asc' },
-      select: { id: true },
-    });
-    kbId = primary?.id ?? null;
+    const defaultKb = await prisma.knowledgeBase.findFirst({ select: { id: true } });
+    if (!defaultKb) return;
+    kbId = defaultKb.id;
   }
-  if (!kbId) return;
 
-  // Check for existing gap with similar question
+  const normalizedQuestion = question.trim().toLowerCase();
+
   const existingGap = await prisma.knowledgeGap.findFirst({
     where: {
       knowledgeBaseId: kbId,
@@ -519,11 +473,9 @@ async function trackKnowledgeGap(input: {
     orderBy: { lastOccurredAt: 'desc' },
   });
 
-  // Simple similarity check - in production, use embeddings for better clustering
   const similarGap = existingGap ? await findSimilarGap(normalizedQuestion, kbId) : null;
 
   if (similarGap) {
-    // Update existing gap
     await prisma.knowledgeGap.update({
       where: { id: similarGap.id },
       data: {
@@ -531,99 +483,19 @@ async function trackKnowledgeGap(input: {
         lastOccurredAt: new Date(),
       },
     });
-
-    // Add new suggested sources if they don't already exist (idempotent)
-    const relevantDocs = deduplicateCitationsByDocumentId(answer.citations);
-    await addSuggestedSources(similarGap.id, relevantDocs);
   } else {
-    // Create new knowledge gap with deduplicated citations
-    const relevantDocs = deduplicateCitationsByDocumentId(answer.citations);
-
     await prisma.knowledgeGap.create({
       data: {
         knowledgeBaseId: kbId,
         title: `Knowledge gap: ${question.slice(0, 80)}${question.length > 80 ? '...' : ''}`,
-        description: `Users repeatedly ask about this topic but the knowledge base does not contain sufficient approved information to answer confidently. Grounding: ${answer.grounding}, Confidence: ${(answer.confidence * 100).toFixed(1)}%`,
+        description: `Users repeatedly ask about this topic but approved knowledge is insufficient. Grounding: ${answer.grounding}`,
         status: 'OPEN',
         occurrenceCount: 1,
-        suggestedSources: {
-          create: relevantDocs.map((d) => ({
-            documentId: d.documentId,
-            relevanceNote: d.relevanceNote,
-          })),
-        },
       },
     });
   }
 }
 
-/**
- * Deduplicates citations by documentId, keeping the citation with the highest relevance score.
- */
-function deduplicateCitationsByDocumentId(
-  citations: { documentId: string; documentTitle: string; excerpt: string }[],
-): Array<{ documentId: string; relevanceNote: string }> {
-  const bestByDoc = new Map<
-    string,
-    { documentId: string; documentTitle: string; excerpt: string }
-  >();
-
-  for (const citation of citations) {
-    const existing = bestByDoc.get(citation.documentId);
-    if (!existing) {
-      bestByDoc.set(citation.documentId, citation);
-    }
-    // Keep the first citation (highest relevance since citations are ordered by relevance)
-  }
-
-  return Array.from(bestByDoc.values()).map((c) => ({
-    documentId: c.documentId,
-    relevanceNote: `Cited in low-confidence answer: ${c.excerpt.slice(0, 200)}`,
-  }));
-}
-
-/**
- * Adds suggested sources to an existing knowledge gap, skipping duplicates.
- * Uses upsert to handle concurrent calls idempotently.
- */
-async function addSuggestedSources(
-  knowledgeGapId: string,
-  docs: Array<{ documentId: string; relevanceNote: string }>,
-): Promise<void> {
-  for (const doc of docs) {
-    try {
-      await prisma.knowledgeGapSuggestion.upsert({
-        where: {
-          knowledgeGapId_documentId: {
-            knowledgeGapId,
-            documentId: doc.documentId,
-          },
-        },
-        create: {
-          knowledgeGapId,
-          documentId: doc.documentId,
-          relevanceNote: doc.relevanceNote,
-        },
-        update: {
-          // Update relevance note with the most recent citation
-          relevanceNote: doc.relevanceNote,
-        },
-      });
-    } catch (error) {
-      // Ignore unique constraint errors from concurrent operations
-      if (error instanceof Error && error.message.includes('P2002')) {
-        // Another request already created this suggestion, that's fine
-        continue;
-      }
-      throw error;
-    }
-  }
-}
-
-/**
- * Simple text similarity check for gap clustering.
- * In production, use embedding-based similarity.
- */
 async function findSimilarGap(
   normalizedQuestion: string,
   knowledgeBaseId: string,
@@ -729,7 +601,6 @@ export async function submitFeedback(options: {
     newData: { rating: options.rating, reason: options.reason ?? null },
   });
 
-  // Negative feedback is a defined escalation trigger.
   let escalationId: string | null = null;
   if (options.rating === 'NOT_HELPFUL') {
     const escalation = await prisma.escalation.create({

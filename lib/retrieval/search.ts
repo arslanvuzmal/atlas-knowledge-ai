@@ -76,16 +76,14 @@ export async function retrieve(request: RetrievalRequest): Promise<RetrievalResu
     queryText: preparation.effective,
   };
 
-  const queryVector = await embedQuery(preparation.effective);
+  const keywordPromise = settings.hybridSearch
+    ? keywordSearch(preparation.effective, { ...filters, limit: settings.retrievalCount })
+    : Promise.resolve([] as RetrievedChunkRow[]);
 
-  // Over-fetch on the lexical side: fusion benefits from a deeper second list,
-  // and reranking will cut it back down.
-  const [vectorRows, keywordRows] = await Promise.all([
-    vectorSearch(queryVector, filters),
-    settings.hybridSearch
-      ? keywordSearch(preparation.effective, { ...filters, limit: settings.retrievalCount })
-      : Promise.resolve([] as RetrievedChunkRow[]),
-  ]);
+  const queryVectorPromise = embedQuery(preparation.effective);
+
+  const [queryVector, keywordRows] = await Promise.all([queryVectorPromise, keywordPromise]);
+  const vectorRows = await vectorSearch(queryVector, filters);
 
   const fused = settings.hybridSearch
     ? reciprocalRankFusion([vectorRows, keywordRows])

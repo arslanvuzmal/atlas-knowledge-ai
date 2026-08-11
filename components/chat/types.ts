@@ -1,7 +1,8 @@
 export type Grounding = 'SUPPORTED' | 'PARTIALLY_SUPPORTED' | 'UNSUPPORTED';
 
 export interface EvidencePacket {
-  confidenceLabel: 'Strong evidence' | 'Partial evidence' | 'Insufficient evidence';
+  confidenceLabel:
+    'Strong evidence' | 'Partial evidence' | 'Insufficient evidence' | 'N/A' | 'Current Web Data';
   supportingPassages: number;
   supportingDocuments: number;
   coverage: number;
@@ -38,6 +39,8 @@ export interface ChatTurn {
   provider?: string;
   model?: string;
   isDemo?: boolean;
+  sourceType?: 'APPROVED_KNOWLEDGE' | 'EXTERNAL_LIVE' | 'GENERAL_MODEL' | 'LOCAL';
+  route?: string;
   /** Set when the request itself failed rather than the answer being unsupported. */
   errored?: boolean;
   createdAt: string;
@@ -63,7 +66,7 @@ export interface PipelineMetadata {
     topScore: number;
     coverage: number;
     agreement: number;
-    margin: number;
+    margin?: number;
     supportingChunks: number;
     uncoveredTerms: string[];
   };
@@ -77,46 +80,32 @@ export interface PipelineMetadata {
     invalidCitationMarkers: number[];
     usedFallbackCitations: boolean;
   };
-  traceId: string;
-  injectionFlagged: boolean;
-  escalationId: string | null;
+  traceId?: string;
+  injectionFlagged?: boolean;
+  escalationId?: string | null;
 }
 
-export interface ChatResponse {
-  conversationId: string;
-  messageId: string;
-  answer: string;
-  grounding: Grounding;
-  confidence: number;
-  citations: Citation[];
-  relatedSources: RelatedSource[];
-  evidence: EvidencePacket;
-  provider: string;
-  model: string;
-  isDemo: boolean;
-  escalationId: string | null;
-  injectionFlagged: boolean;
-  traceId: string;
-  pipelineMeta?: PipelineMetadata;
+export interface GroundingMeta {
+  label: string;
+  tone: 'teal' | 'amber' | 'crimson';
+  description: string;
 }
 
-export const GROUNDING_META: Record<
-  Grounding,
-  { label: string; tone: 'good' | 'warning' | 'critical'; description: string }
-> = {
+export const GROUNDING_META: Record<Grounding, GroundingMeta> = {
   SUPPORTED: {
-    label: 'Supported',
-    tone: 'good',
-    description: 'Grounded in the cited approved sources.',
+    label: 'SUPPORTED',
+    tone: 'teal',
+    description: 'Every statement in this answer is directly backed by an approved source.',
   },
   PARTIALLY_SUPPORTED: {
-    label: 'Partially supported',
-    tone: 'warning',
-    description: 'Partly covered by the sources. Some of the question is not addressed.',
+    label: 'PARTIALLY SUPPORTED',
+    tone: 'amber',
+    description:
+      'The answer draws on approved sources, but some statements could not be cross-referenced.',
   },
   UNSUPPORTED: {
-    label: 'Not supported',
-    tone: 'critical',
-    description: 'The approved knowledge base does not contain a reliable answer.',
+    label: 'UNSUPPORTED',
+    tone: 'crimson',
+    description: 'Retrieval did not produce enough approved evidence to answer this question.',
   },
 };

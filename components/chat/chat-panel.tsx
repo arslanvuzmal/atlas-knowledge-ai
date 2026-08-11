@@ -110,6 +110,8 @@ export function ChatPanel({
         grounding: data.grounding ?? data.answer?.grounding,
         citations: data.citations ?? data.answer?.citations,
         evidence: data.evidence ?? data.answer?.evidence,
+        sourceType: data.sourceType ?? data.answer?.sourceType,
+        route: data.route,
         relatedSources: data.relatedSources,
         createdAt: new Date().toISOString(),
       };
@@ -459,16 +461,35 @@ function AssistantTurn({
   const meta = turn.grounding ? GROUNDING_META[turn.grounding] : null;
   const unsupported = turn.grounding === 'UNSUPPORTED';
 
+  const sourceType = turn.sourceType ?? 'APPROVED_KNOWLEDGE';
+
   return (
     <article className="animate-fade-up rounded border border-edge bg-canvas-raised space-y-3 p-4">
       <div className="flex flex-wrap items-center justify-between gap-2 border-b border-edge pb-2.5">
         <div className="flex items-center gap-2">
-          {meta ? (
-            <Badge tone={meta.tone} title={meta.description}>
+          {sourceType === 'EXTERNAL_LIVE' ? (
+            <Badge tone="warning" title="Answer retrieved from live web search">
+              🌐 Live Web Sources
+            </Badge>
+          ) : sourceType === 'GENERAL_MODEL' ? (
+            <Badge tone="iris" title="General knowledge answer from AI model">
+              💡 General AI Answer
+            </Badge>
+          ) : sourceType === 'LOCAL' ? (
+            <Badge tone="neutral" title="Instant local conversational response">
+              ⚡ Local Response
+            </Badge>
+          ) : meta ? (
+            <Badge
+              tone={
+                meta.tone === 'amber' ? 'warning' : meta.tone === 'crimson' ? 'critical' : meta.tone
+              }
+              title={meta.description}
+            >
               {meta.label}
             </Badge>
           ) : null}
-          {typeof turn.confidence === 'number' ? (
+          {sourceType === 'APPROVED_KNOWLEDGE' && typeof turn.confidence === 'number' ? (
             <ConfidenceMeter value={turn.confidence} threshold={0.65} compact />
           ) : null}
         </div>

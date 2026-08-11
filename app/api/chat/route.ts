@@ -7,7 +7,6 @@ import { validateQuestion } from '@/lib/retrieval/query';
 import { prisma } from '@/lib/database/client';
 import { randomToken } from '@/lib/security/hash';
 import { logger } from '@/lib/observability/logger';
-import { ensureDemoDataSeeded } from '@/lib/database/auto-seed';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
@@ -22,8 +21,7 @@ const schema = z.object({
 
 export async function POST(request: Request) {
   // Anonymous callers are permitted: the public demo is a first-class surface.
-  // They are bound to the PUBLIC role, so they can only ever retrieve public
-  // content regardless of what they ask for.
+  // They are bound to the PUBLIC role, so they can only ever retrieve public content.
   const guard = await guardRequest(request, {
     allowAnonymous: true,
     rateLimit: 'chat',
@@ -47,8 +45,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: validation.reason }, { status: 400 });
   }
 
-  // Anonymous sessions get a random key so their conversation history is theirs
-  // alone and is not addressable by anyone who guesses a conversation id.
+  // Anonymous session key
   const cookieStore = await cookies();
   let anonymousKey: string | null = null;
   if (!guard.session.isAuthenticated) {
@@ -80,9 +77,6 @@ export async function POST(request: Request) {
     });
     if (primary) {
       knowledgeBaseId = primary.id;
-    } else {
-      const seeded = await ensureDemoDataSeeded();
-      knowledgeBaseId = seeded.knowledgeBaseId;
     }
   }
 
@@ -105,6 +99,8 @@ export async function POST(request: Request) {
       answer: result.answer.text,
       grounding: result.answer.grounding,
       confidence: result.answer.confidence,
+      route: result.route,
+      sourceType: result.sourceType,
       citations: result.answer.citations.map((citation) => ({
         ordinal: citation.ordinal,
         documentId: citation.documentId,
@@ -118,8 +114,7 @@ export async function POST(request: Request) {
       evidence: result.answer.evidence,
       provider: result.answer.provider,
       model: result.answer.model,
-      isDemo: result.answer.isDemo,
-      escalationId: result.escalationId,
+      latencyMs: Date.now() - startedAt,
       injectionFlagged: result.injectionFlagged,
       traceId: result.traceId,
       pipelineMeta: {
@@ -148,7 +143,6 @@ export async function POST(request: Request) {
                   ).toFixed(2),
                 )
               : 0,
-          margin: Number((result.answer.confidence * 0.2).toFixed(2)),
           supportingChunks: result.answer.evidence.supportingPassages,
           uncoveredTerms: [],
         },
@@ -225,7 +219,6 @@ export async function POST(request: Request) {
         error: publicMessage,
         code,
         correlationId: guard.correlationId,
-        details: error instanceof Error ? error.message : String(error),
       },
       { status: statusCode },
     );

@@ -1,5 +1,28 @@
 import type { ConversationTurn } from '@/lib/retrieval/query';
 
+export type ChatRoute =
+  | 'LOCAL_CONVERSATION'
+  | 'GENERAL_KNOWLEDGE'
+  | 'LIVE_EXTERNAL'
+  | 'ORGANIZATIONAL_KNOWLEDGE'
+  | 'FOLLOW_UP_ORGANIZATIONAL'
+  | 'HUMAN_REQUEST'
+  | 'UNSAFE'
+  | 'AMBIGUOUS';
+
+export interface RouteResult {
+  route: ChatRoute;
+  confidence: number;
+  reason: string;
+  requiresRag: boolean;
+  requiresGemini: boolean;
+  requiresLiveTool: boolean;
+  requiresHistory: boolean;
+  cleanQuestion: string;
+  missingLocation?: boolean;
+}
+
+// Backward-compatible ChatIntent mapping
 export type ChatIntent =
   | 'GREETING'
   | 'HELP'
@@ -20,357 +43,332 @@ export interface IntentResult {
   isKnowledgeQuery: boolean;
   isConversational: boolean;
   shouldSkipRag: boolean;
+  routeResult: RouteResult;
 }
 
-const GREETING_PATTERNS = [
-  /^hi\b/i,
-  /^hello\b/i,
-  /^hey\b/i,
-  /^good\s+(morning|afternoon|evening)\b/i,
-  /^howdy\b/i,
-  /^hiya\b/i,
-  /^what'?s\s+up\b/i,
-  /^yo\b/i,
-  /^greetings\b/i,
-];
+const GREETING_PREFIX_REGEX =
+  /^(hi|hello|hey|good\s+(morning|afternoon|evening)|howdy|hiya|what'?s\s+up|yo|greetings)\b[\s,!]*(\b(there|everyone|friend|atlas)\b[\s,!]*)*\s*/i;
 
-const HELP_PATTERNS = [
-  /^help\b/i,
-  /^can\s+you\s+help\b/i,
-  /^i\s+need\s+(some\s+)?help\b/i,
-  /^what\s+can\s+you\s+do\b/i,
-  /^how\s+(do\s+i|to)\s+use\b/i,
-  /^how\s+does\s+this\s+work\b/i,
-  /^explain\s+how\s+to\b/i,
-  /^i'?m\s+lost\b/i,
-  /^getting\s+started\b/i,
-];
-
-const CAPABILITY_PATTERNS = [
-  /^what\s+(can|are)\s+you\s+(capable\s+of|able\s+to\s+do)\b/i,
-  /^what\s+are\s+your\s+(features|capabilities)\b/i,
-  /^tell\s+me\s+what\s+you\s+can\s+do\b/i,
-  /^what\s+do\s+you\s+know\b/i,
-  /^what\s+questions\s+can\s+i\s+ask\b/i,
-];
-
-const THANKS_PATTERNS = [
-  /^thanks\b/i,
-  /^thank\s+you\b/i,
-  /^thx\b/i,
-  /^perfect\b/i,
-  /^great\b/i,
-  /^awesome\b/i,
-  /^got\s+it\b/i,
-  /^that\s+helps\b/i,
-  /^appreciate\s+it\b/i,
-];
-
-const FAREWELL_PATTERNS = [
-  /^bye\b/i,
-  /^goodbye\b/i,
-  /^see\s+you\b/i,
-  /^farewell\b/i,
-  /^later\b/i,
-  /^cya\b/i,
-  /^have\s+a\s+good\b/i,
-];
-
-const SMALL_TALK_PATTERNS = [
-  /^how\s+are\s+you\b/i,
-  /^what'?s\s+new\b/i,
-  /^nice\s+(to\s+meet|talking)\b/i,
-  /^tell\s+me\s+a\s+joke\b/i,
-  /^who\s+are\s+you\b/i,
-  /^what'?s\s+your\s+name\b/i,
-];
+const THANKS_PREFIX_REGEX = /^(thanks|thank\s+you|thx|appreciate\s+it)\b[\s,!]*/i;
 
 const HUMAN_REQUEST_PATTERNS = [
-  /^human\b/i,
-  /^talk\s+to\s+a\s+(human|person|agent)\b/i,
-  /^i\s+want\s+to\s+speak\s+to\s+(someone|a\s+human)\b/i,
-  /^transfer\s+me\s+to\s+(a\s+human|support)\b/i,
-  /^escalate\b/i,
-  /^i\s+need\s+real\s+(help|support)\b/i,
+  /\bhuman\b/i,
+  /\btalk\s+to\s+a\s+(human|person|agent)\b/i,
+  /\bi\s+want\s+to\s+speak\s+to\s+(someone|a\s+human)\b/i,
+  /\btransfer\s+me\s+to\s+(a\s+human|support)\b/i,
+  /\bescalate\b/i,
+  /\bcan\s+someone\s+contact\s+me\b/i,
+  /\bhave\s+someone\s+follow\s+up\b/i,
+  /\bcontact\s+me\b/i,
 ];
 
-function matchAny(patterns: RegExp[], text: string): boolean {
-  return patterns.some((p) => p.test(text));
-}
+const WEATHER_PATTERNS = [
+  /\bweather\b/i,
+  /\btemperature\b/i,
+  /\bforecast\b/i,
+  /\bwill\s+it\s+rain\b/i,
+  /\bis\s+it\s+raining\b/i,
+  /\bsnowing\b/i,
+  /\bwind\s+speed\b/i,
+];
+
+const LIVE_EXTERNAL_PATTERNS = [
+  /\b(today|currently|right\s+now|latest|news|version|exchange\s+rate|stock\s+price|current\s+ceo|current\s+president|time\s+in)\b/i,
+  /\bwhat\s+time\s+is\s+it\b/i,
+  /\blatest\s+ai\s+news\b/i,
+  /\bwho\s+won\s+yesterday\b/i,
+  /\bcurrent\s+usd\b/i,
+];
+
+const ORGANIZATIONAL_KEYWORDS = [
+  'policy',
+  'refund',
+  'pricing',
+  'price',
+  'cost',
+  'plan',
+  'team plan',
+  'enterprise plan',
+  'subscription',
+  'annual',
+  'monthly',
+  'leave',
+  'vacation',
+  'soc 2',
+  'hipaa',
+  'security controls',
+  'security',
+  'encryption',
+  'data at rest',
+  'data in transit',
+  'aes-256',
+  'tls 1.3',
+  'incident',
+  'sev 1',
+  'sev 2',
+  'handbook',
+  'northstar',
+  'atlas',
+  'compliance',
+  'on-call',
+  'oncall',
+  'document',
+  'auth',
+  'authentication',
+  'authorization',
+  'sso',
+  'saml',
+  'mfa',
+  '2fa',
+  'audit',
+  'backup',
+  'retention',
+  'sla',
+  'uptime',
+  'availability',
+  'our company',
+  'our product',
+  'our security',
+  'our pricing',
+  'our refund',
+  'our leave',
+];
+
+const GENERAL_KNOWLEDGE_PATTERNS = [
+  /^what\s+is\s+(machine\s+learning|photosynthesis|compound\s+interest|ai|quantum\s+computing|blockchain|dna|gravity|black\s+hole|inflation)\b/i,
+  /^who\s+(invented|created|wrote|discovered)\s+(python|javascript|linux|the\s+telephone|penicillin|relativity)\b/i,
+  /^explain\s+(compound\s+interest|newton'?s|photosynthesis|machine\s+learning|relativity|quantum)\b/i,
+  /^what\s+is\s+the\s+capital\s+of\b/i,
+  /^give\s+me\s+\d+\s+ideas\b/i,
+  /^how\s+does\s+(photosynthesis|gravity|a\s+car\s+engine)\s+work\b/i,
+];
 
 function normalize(text: string): string {
   return text.toLowerCase().trim();
 }
 
-function isShortMessage(text: string): boolean {
-  const words = text.trim().split(/\s+/);
-  return words.length <= 5;
+export function stripSocialPrefix(raw: string): string {
+  let text = raw.trim();
+  text = text.replace(GREETING_PREFIX_REGEX, '');
+  text = text.replace(THANKS_PREFIX_REGEX, '');
+  return text.trim();
 }
 
-export function detectIntent(question: string, history: ConversationTurn[] = []): IntentResult {
-  const normalized = normalize(question);
+export function routeMessage(question: string, history: ConversationTurn[] = []): RouteResult {
+  const rawNormalized = normalize(question);
+  const cleanQuestion = stripSocialPrefix(question);
+  const cleanNormalized = normalize(cleanQuestion);
 
-  if (matchAny(HUMAN_REQUEST_PATTERNS, normalized)) {
+  // 1. Human Operator / Escalation Request
+  if (HUMAN_REQUEST_PATTERNS.some((p) => p.test(rawNormalized))) {
     return {
-      intent: 'HUMAN_REQUEST',
+      route: 'HUMAN_REQUEST',
       confidence: 0.95,
-      reasoning: 'Explicit request for human operator',
-      isKnowledgeQuery: false,
-      isConversational: true,
-      shouldSkipRag: true,
+      reason: 'Explicit request for human operator or CRM follow-up',
+      requiresRag: false,
+      requiresGemini: false,
+      requiresLiveTool: false,
+      requiresHistory: false,
+      cleanQuestion,
     };
   }
 
-  if (matchAny(GREETING_PATTERNS, normalized)) {
+  // 2. Social / Local Fast Path
+  if (cleanNormalized.length === 0) {
     return {
-      intent: 'GREETING',
-      confidence: 0.95,
-      reasoning: 'Greeting detected',
-      isKnowledgeQuery: false,
-      isConversational: true,
-      shouldSkipRag: true,
+      route: 'LOCAL_CONVERSATION',
+      confidence: 0.98,
+      reason: 'Pure greeting or social expression',
+      requiresRag: false,
+      requiresGemini: false,
+      requiresLiveTool: false,
+      requiresHistory: false,
+      cleanQuestion: '',
     };
   }
 
-  if (matchAny(HELP_PATTERNS, normalized)) {
+  const isSmallTalkOnly = [
+    /^how\s+are\s+you\b/i,
+    /^what\s+can\s+you\s+do\b/i,
+    /^who\s+are\s+you\b/i,
+    /^tell\s+me\s+a\s+joke\b/i,
+    /^goodbye\b/i,
+    /^bye\b/i,
+    /^there\b/i,
+  ].some((p) => p.test(cleanNormalized));
+
+  if (isSmallTalkOnly && cleanNormalized.split(/\s+/).length <= 6) {
     return {
-      intent: 'HELP',
+      route: 'LOCAL_CONVERSATION',
+      confidence: 0.95,
+      reason: 'Trivial small talk or system capability query',
+      requiresRag: false,
+      requiresGemini: false,
+      requiresLiveTool: false,
+      requiresHistory: false,
+      cleanQuestion,
+    };
+  }
+
+  // 3. Organizational RAG Query Check
+  const hasOrgKeyword = ORGANIZATIONAL_KEYWORDS.some((kw) => cleanNormalized.includes(kw));
+
+  // 4. Follow-up Check
+  if (history.length > 0) {
+    const recentTurns = history.filter((t) => t.role === 'USER').slice(-2);
+    if (recentTurns.length > 0) {
+      const lastQuestion = recentTurns[recentTurns.length - 1].content.toLowerCase();
+      const lastWasOrg = ORGANIZATIONAL_KEYWORDS.some((kw) => lastQuestion.includes(kw));
+
+      const isReferentialFollowUp = [
+        /^does\s+(that|this)\b/i,
+        /^what\s+about\b/i,
+        /^how\s+about\b/i,
+        /^and\s+for\b/i,
+        /^apply\s+to\b/i,
+      ].some((p) => p.test(cleanNormalized));
+
+      if (lastWasOrg && (isReferentialFollowUp || (cleanNormalized.length < 35 && hasOrgKeyword))) {
+        return {
+          route: 'FOLLOW_UP_ORGANIZATIONAL',
+          confidence: 0.9,
+          reason: 'Follow-up to previous organizational knowledge query',
+          requiresRag: true,
+          requiresGemini: true,
+          requiresLiveTool: false,
+          requiresHistory: true,
+          cleanQuestion,
+        };
+      }
+    }
+  }
+
+  if (hasOrgKeyword) {
+    return {
+      route: 'ORGANIZATIONAL_KNOWLEDGE',
+      confidence: 0.92,
+      reason: 'Contains governed organizational keyword or policy reference',
+      requiresRag: true,
+      requiresGemini: true,
+      requiresLiveTool: false,
+      requiresHistory: false,
+      cleanQuestion,
+    };
+  }
+
+  // 5. Weather / Live External Information
+  const isWeather = WEATHER_PATTERNS.some((p) => p.test(cleanNormalized));
+  if (isWeather) {
+    const hasLocation =
+      /\b(in|at|for|near)\s+([A-Z][a-z]+|[a-z]+)\b/i.test(cleanNormalized) ||
+      /\b(budapest|london|tokyo|islamabad|paris|new york|san francisco|berlin|sydney)\b/i.test(
+        cleanNormalized,
+      );
+
+    return {
+      route: 'LIVE_EXTERNAL',
+      confidence: 0.95,
+      reason: isWeather ? 'Live weather query' : 'Live external information query',
+      requiresRag: false,
+      requiresGemini: hasLocation,
+      requiresLiveTool: hasLocation,
+      requiresHistory: false,
+      cleanQuestion,
+      missingLocation: !hasLocation,
+    };
+  }
+
+  const isLiveInfo = LIVE_EXTERNAL_PATTERNS.some((p) => p.test(cleanNormalized));
+  if (isLiveInfo) {
+    return {
+      route: 'LIVE_EXTERNAL',
       confidence: 0.9,
-      reasoning: 'Help request detected',
-      isKnowledgeQuery: false,
-      isConversational: true,
-      shouldSkipRag: true,
+      reason: 'Live external information query',
+      requiresRag: false,
+      requiresGemini: true,
+      requiresLiveTool: true,
+      requiresHistory: false,
+      cleanQuestion,
     };
   }
 
-  if (matchAny(CAPABILITY_PATTERNS, normalized)) {
+  // 6. General Knowledge Query
+  const isGeneralKnowledge =
+    GENERAL_KNOWLEDGE_PATTERNS.some((p) => p.test(cleanNormalized)) ||
+    (!hasOrgKeyword &&
+      /^(what|who|why|where|how|explain)\b/i.test(cleanNormalized) &&
+      !/\b(our|company|workspace|handbook|policy|pricing)\b/i.test(cleanNormalized));
+
+  if (isGeneralKnowledge) {
     return {
-      intent: 'CAPABILITY',
-      confidence: 0.9,
-      reasoning: 'Capability inquiry detected',
-      isKnowledgeQuery: false,
-      isConversational: true,
-      shouldSkipRag: true,
+      route: 'GENERAL_KNOWLEDGE',
+      confidence: 0.88,
+      reason: 'General stable world knowledge query',
+      requiresRag: false,
+      requiresGemini: true,
+      requiresLiveTool: false,
+      requiresHistory: false,
+      cleanQuestion,
     };
   }
 
-  if (matchAny(THANKS_PATTERNS, normalized)) {
-    return {
-      intent: 'THANKS',
-      confidence: 0.95,
-      reasoning: 'Thank you detected',
-      isKnowledgeQuery: false,
-      isConversational: true,
-      shouldSkipRag: true,
-    };
-  }
-
-  if (matchAny(FAREWELL_PATTERNS, normalized)) {
-    return {
-      intent: 'FAREWELL',
-      confidence: 0.95,
-      reasoning: 'Farewell detected',
-      isKnowledgeQuery: false,
-      isConversational: true,
-      shouldSkipRag: true,
-    };
-  }
-
-  if (matchAny(SMALL_TALK_PATTERNS, normalized)) {
-    return {
-      intent: 'SMALL_TALK',
-      confidence: 0.85,
-      reasoning: 'Small talk detected',
-      isKnowledgeQuery: false,
-      isConversational: true,
-      shouldSkipRag: true,
-    };
-  }
-
-  const followUpResult = detectFollowUpIntent(normalized, history);
-  if (followUpResult) {
-    return followUpResult;
-  }
-
-  if (isShortMessage(normalized) && !hasKnowledgeKeywords(normalized)) {
-    return {
-      intent: 'CONVERSATIONAL',
-      confidence: 0.7,
-      reasoning: 'Short conversational message without knowledge keywords',
-      isKnowledgeQuery: false,
-      isConversational: true,
-      shouldSkipRag: true,
-    };
-  }
-
+  // 7. Default Fallback -> Governed RAG
   return {
-    intent: 'KNOWLEDGE_QUERY',
+    route: 'ORGANIZATIONAL_KNOWLEDGE',
     confidence: 0.8,
-    reasoning: 'Knowledge query detected',
-    isKnowledgeQuery: true,
-    isConversational: false,
-    shouldSkipRag: false,
+    reason: 'Defaulting unclassified business query to governed RAG',
+    requiresRag: true,
+    requiresGemini: true,
+    requiresLiveTool: false,
+    requiresHistory: false,
+    cleanQuestion,
   };
 }
 
-function detectFollowUpIntent(
-  normalized: string,
-  history: ConversationTurn[],
-): IntentResult | null {
-  if (history.length === 0) return null;
+export function detectIntent(question: string, history: ConversationTurn[] = []): IntentResult {
+  const routeRes = routeMessage(question, history);
 
-  const recentUserTurns = history.filter((t) => t.role === 'USER').slice(-3);
-
-  if (recentUserTurns.length === 0) return null;
-
-  const lastUserQuestion = recentUserTurns[recentUserTurns.length - 1].content.toLowerCase();
-  const wasKnowledgeQuery = hasKnowledgeKeywords(lastUserQuestion);
-
-  if (!wasKnowledgeQuery) return null;
-
-  const followUpOpeners = [
-    /^(and|but|so|also|then|therefore)\b/i,
-    /^what\s+about\b/i,
-    /^how\s+about\b/i,
-    /^does\s+that\b/i,
-    /^does\s+this\b/i,
-    /^what\s+if\b/i,
-    /^can\s+you\s+elaborate\b/i,
-    /^tell\s+me\s+more\b/i,
-    /^why\b/i,
-    /^when\b/i,
-    /^where\b/i,
-    /^who\b/i,
-  ];
-
-  if (followUpOpeners.some((p) => p.test(normalized))) {
-    return {
-      intent: 'FOLLOW_UP_KNOWLEDGE_QUERY',
-      confidence: 0.85,
-      reasoning: 'Follow-up to previous knowledge query',
-      isKnowledgeQuery: true,
-      isConversational: false,
-      shouldSkipRag: false,
-    };
+  let intent: ChatIntent = 'KNOWLEDGE_QUERY';
+  if (routeRes.route === 'LOCAL_CONVERSATION') {
+    intent = 'GREETING';
+  } else if (routeRes.route === 'HUMAN_REQUEST') {
+    intent = 'HUMAN_REQUEST';
+  } else if (routeRes.route === 'FOLLOW_UP_ORGANIZATIONAL') {
+    intent = 'FOLLOW_UP_KNOWLEDGE_QUERY';
+  } else if (routeRes.route === 'UNSAFE') {
+    intent = 'UNSAFE_OR_INJECTION';
   }
 
-  if (isShortMessage(normalized) && hasReferentialMarkers(normalized)) {
-    return {
-      intent: 'FOLLOW_UP_KNOWLEDGE_QUERY',
-      confidence: 0.75,
-      reasoning: 'Short follow-up with referential markers',
-      isKnowledgeQuery: true,
-      isConversational: false,
-      shouldSkipRag: false,
-    };
-  }
-
-  return null;
+  return {
+    intent,
+    confidence: routeRes.confidence,
+    reasoning: routeRes.reason,
+    isKnowledgeQuery: routeRes.requiresRag,
+    isConversational:
+      routeRes.route === 'LOCAL_CONVERSATION' || routeRes.route === 'GENERAL_KNOWLEDGE',
+    shouldSkipRag: !routeRes.requiresRag,
+    routeResult: routeRes,
+  };
 }
 
-function hasKnowledgeKeywords(text: string): boolean {
-  const knowledgeKeywords = [
-    'what',
-    'how',
-    'when',
-    'where',
-    'who',
-    'why',
-    'policy',
-    'refund',
-    'price',
-    'cost',
-    'plan',
-    'subscription',
-    'encryption',
-    'security',
-    'compliance',
-    'hipaa',
-    'data',
-    'leave',
-    'vacation',
-    'benefit',
-    'salary',
-    'pay',
-    'incident',
-    'sev',
-    'commander',
-    'oncall',
-    'escalation',
-    'trial',
-    'credit',
-    'card',
-    'billing',
-    'invoice',
-    'mobile',
-    'app',
-    'api',
-    'integration',
-    'flow',
-    'step',
-    'run',
-    'audit',
-    'retention',
-    'gdpr',
-    'employee',
-    'manager',
-    'customer',
-    'public',
-    'access',
-    'document',
-    'source',
-    'citation',
-    'evidence',
-  ];
-
-  return knowledgeKeywords.some((kw) => text.includes(kw));
-}
-
-function hasReferentialMarkers(text: string): boolean {
-  const markers = new Set([
-    'that',
-    'this',
-    'those',
-    'these',
-    'it',
-    'they',
-    'them',
-    'such',
-    'same',
-    'similar',
-    'also',
-    'too',
-    'either',
-    'apply',
-    'work',
-    'cover',
-    'include',
-    'exclude',
-  ]);
-
-  const words = text.split(/\s+/);
-  return words.some((w) => markers.has(w.toLowerCase()));
-}
-
-export function getConversationalResponse(intent: ChatIntent): string {
+export function getConversationalResponse(intent: ChatIntent | ChatRoute): string {
   switch (intent) {
     case 'GREETING':
+    case 'LOCAL_CONVERSATION':
       return 'Hi! How can I help you today?';
     case 'HELP':
       return "Of course! Tell me what you need help with, and I'll either answer from the approved knowledge base or point you in the right direction.";
     case 'CAPABILITY':
-      return 'I can search your approved organizational knowledge, answer questions with source citations, respect access permissions, refuse unsupported claims, and escalate to a human when needed. What would you like to know?';
+      return 'I can search your approved organizational knowledge, answer questions with source citations, handle general inquiries, retrieve live weather or web information, and escalate to a human when needed. What would you like to know?';
     case 'THANKS':
       return "You're welcome! What else can I help with?";
     case 'FAREWELL':
       return 'Goodbye! Feel free to return if you have more questions.';
     case 'SMALL_TALK':
       return "I'm doing well, thank you! How can I assist you today?";
-    case 'CONVERSATIONAL':
-      return "I'm here to help with questions about your approved knowledge base. What would you like to know?";
     case 'HUMAN_REQUEST':
-      return "I'll connect you with a human operator. They'll be able to help you further.";
+      return "I'll connect you with a human operator. Someone will follow up with you shortly.";
     default:
-      return 'How can I help you?';
+      return 'Hi! How can I help you today?';
   }
 }

@@ -22,6 +22,10 @@ import { fitToDimensions } from '@/lib/embeddings/types';
 let cachedProvider: EmbeddingProvider | null = null;
 let cachedKey = '';
 
+// Bounded LRU Cache for query embeddings (max 500 queries)
+const queryEmbeddingCache = new Map<string, number[]>();
+const MAX_QUERY_CACHE_SIZE = 500;
+
 export function getEmbeddingProvider(): EmbeddingProvider {
   const config = env();
   const key = `${config.EMBEDDING_PROVIDER}:${config.EMBEDDING_MODEL ?? ''}:${config.EMBEDDING_DIMENSIONS}`;
@@ -61,6 +65,7 @@ export function getEmbeddingProvider(): EmbeddingProvider {
 export function resetEmbeddingProviderCache(): void {
   cachedProvider = null;
   cachedKey = '';
+  queryEmbeddingCache.clear();
 }
 
 /** Batch size chosen to stay well inside every provider's request limits. */
@@ -105,8 +110,24 @@ export async function embedTexts(texts: string[], signal?: AbortSignal): Promise
 }
 
 export async function embedQuery(text: string, signal?: AbortSignal): Promise<number[]> {
+  const provider = getEmbeddingProvider();
+  const targetDimensions = env().EMBEDDING_DIMENSIONS;
+  const cacheKey = `${provider.name}:${provider.model}:${targetDimensions}:${text.trim().toLowerCase()}`;
+
+  if (queryEmbeddingCache.has(cacheKey)) {
+    return queryEmbeddingCache.get(cacheKey)!;
+  }
+
   const result = await embedTexts([text], signal);
-  return result.vectors[0];
+  const vector = result.vectors[0];
+
+  if (queryEmbeddingCache.size >= MAX_QUERY_CACHE_SIZE) {
+    const firstKey = queryEmbeddingCache.keys().next().value;
+    if (firstKey) queryEmbeddingCache.delete(firstKey);
+  }
+  queryEmbeddingCache.set(cacheKey, vector);
+
+  return vector;
 }
 
 export { DemoEmbeddingProvider } from '@/lib/embeddings/demo';
