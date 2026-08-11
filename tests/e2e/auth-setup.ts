@@ -28,6 +28,7 @@ const ACCOUNTS: [keyof typeof STORAGE, string][] = [
 
 for (const [role, email] of ACCOUNTS) {
   setup(`authenticate as ${role}`, async ({ page }) => {
+    await page.context().clearCookies();
     await page.goto('/login');
     await page.getByLabel('Email').fill(email);
     await page.getByLabel('Password').fill(DEMO_PASSWORD);

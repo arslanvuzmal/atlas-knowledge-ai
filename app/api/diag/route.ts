@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/database/client';
 import { getSession } from '@/lib/auth/session';
-import { getCurrentWorkspaceContext } from '@/lib/workspace/context';
+import { getCurrentWorkspaceContext, type WorkspaceContext } from '@/lib/workspace/context';
 import { listContacts } from '@/lib/crm/contact';
 import { listCompanies } from '@/lib/crm/company';
 import { listDeals } from '@/lib/crm/deal';
@@ -46,7 +46,7 @@ export async function GET() {
   }
 
   // 5. Test CRM functions
-  const wsId = (report.workspace as any)?.id || 'default-workspace-id';
+  const wsId = (report.workspace as WorkspaceContext | undefined)?.id || 'default-workspace-id';
   try {
     report.contactsList = await listContacts(wsId);
   } catch (err: unknown) {

@@ -19,7 +19,7 @@ export interface SessionUser {
 
 export interface SessionContext {
   user: SessionUser | null;
-  /** Effective role. Unauthenticated callers act as PUBLIC, never as unchecked. */
+  /** Effective role. Unauthenticated callers act as PUBLIC. */
   role: Role;
   isAuthenticated: boolean;
 }
@@ -69,8 +69,7 @@ export async function createSession(
     expires: expiresAt,
   });
 
-  // Readable by client script on purpose: it is the double-submit CSRF token.
-  // Its security comes from same-origin policy, not from being secret to the page.
+  // Readable by client script on purpose: double-submit CSRF token.
   cookieStore.set(CSRF_COOKIE, csrfToken, {
     httpOnly: false,
     secure,
@@ -83,96 +82,78 @@ export async function createSession(
 }
 
 /**
- * Resolves the current session. Returns the PUBLIC role for anonymous callers
- * so every downstream authorisation check operates on a concrete role.
+ * Resolves the current session. Returns PUBLIC (unauthenticated) whenever
+ * there is no valid, active, non-expired session cookie.
  */
 export async function getSession(): Promise<SessionContext> {
   const anonymous: SessionContext = { user: null, role: 'PUBLIC', isAuthenticated: false };
 
   let token: string | undefined;
-  let demoRoleCookie: string | undefined;
   try {
     const cookieStore = await cookies();
     token = cookieStore.get(SESSION_COOKIE)?.value;
-    demoRoleCookie = cookieStore.get('atlas_demo_role')?.value;
   } catch {
-    // `cookies()` is unavailable in some rendering contexts; treat as anonymous.
+    // `cookies()` is unavailable in some contexts; treat as anonymous.
     return anonymous;
   }
 
   if (!token) {
-    if (env().DEMO_MODE) {
-      const demoRole = (demoRoleCookie as Role) || 'ADMIN';
-      if (demoRole === 'PUBLIC') return anonymous;
+    return anonymous;
+  }
 
-      const demoUser = await prisma.user.findFirst({
-        where: { isDemo: true },
-        orderBy: { createdAt: 'asc' },
-      });
+  try {
+    const record = await prisma.session.findUnique({
+      where: { tokenHash: sha256(token) },
+      include: { user: true },
+    });
 
-      if (demoUser) {
-        return {
-          user: toSessionUser({ ...demoUser, role: demoRole }),
-          role: demoRole,
-          isAuthenticated: true,
-        };
-      }
-
-      return {
-        user: {
-          id: 'demo-user-id',
-          name: 'Demo Administrator',
-          email: 'admin@northstar.example',
-          role: demoRole,
-          isDemo: true,
-        },
-        role: demoRole,
-        isAuthenticated: true,
-      };
+    if (!record || record.revokedAt || record.expiresAt.getTime() <= Date.now()) {
+      return anonymous;
     }
+    if (record.user.status !== 'ACTIVE') {
+      return anonymous;
+    }
+    // Demo accounts must stop working the moment demo mode is switched off.
+    if (record.user.isDemo && !env().DEMO_MODE) {
+      return anonymous;
+    }
+
+    // Sliding expiry, written only when close to lapsing.
+    if (record.expiresAt.getTime() - Date.now() < SESSION_RENEW_THRESHOLD_MS) {
+      const expiresAt = new Date(Date.now() + SESSION_TTL_MS);
+      await prisma.session
+        .update({ where: { id: record.id }, data: { expiresAt } })
+        .catch(() => null);
+    }
+
+    return {
+      user: toSessionUser(record.user),
+      role: record.user.role,
+      isAuthenticated: true,
+    };
+  } catch {
     return anonymous;
   }
-
-  const record = await prisma.session.findUnique({
-    where: { tokenHash: sha256(token) },
-    include: { user: true },
-  });
-
-  if (!record || record.revokedAt || record.expiresAt.getTime() <= Date.now()) {
-    return anonymous;
-  }
-  if (record.user.status !== 'ACTIVE') {
-    return anonymous;
-  }
-  // Demo accounts must stop working the moment demo mode is switched off.
-  if (record.user.isDemo && !env().DEMO_MODE) {
-    return anonymous;
-  }
-
-  // Sliding expiry, written only when it is close to lapsing.
-  if (record.expiresAt.getTime() - Date.now() < SESSION_RENEW_THRESHOLD_MS) {
-    const expiresAt = new Date(Date.now() + SESSION_TTL_MS);
-    await prisma.session.update({ where: { id: record.id }, data: { expiresAt } });
-  }
-
-  return {
-    user: toSessionUser(record.user),
-    role: record.user.role,
-    isAuthenticated: true,
-  };
 }
 
 export async function destroySession(): Promise<void> {
-  const cookieStore = await cookies();
-  const token = cookieStore.get(SESSION_COOKIE)?.value;
-  if (token) {
-    await prisma.session.updateMany({
-      where: { tokenHash: sha256(token), revokedAt: null },
-      data: { revokedAt: new Date() },
-    });
+  try {
+    const cookieStore = await cookies();
+    const token = cookieStore.get(SESSION_COOKIE)?.value;
+    if (token) {
+      await prisma.session
+        .updateMany({
+          where: { tokenHash: sha256(token), revokedAt: null },
+          data: { revokedAt: new Date() },
+        })
+        .catch(() => null);
+    }
+    cookieStore.delete(SESSION_COOKIE);
+    cookieStore.delete(CSRF_COOKIE);
+    cookieStore.delete('atlas_demo_role');
+  } catch {
+    // Ignore cookie deletion errors in non-request contexts
   }
-  cookieStore.delete(SESSION_COOKIE);
-  cookieStore.delete(CSRF_COOKIE);
 }
 
 export async function revokeAllSessionsForUser(userId: string): Promise<number> {

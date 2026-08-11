@@ -1,7 +1,11 @@
 import { NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
 import { z } from 'zod';
+import type { Role } from '@prisma/client';
 import { isDemoMode } from '@/lib/env';
+import { prisma } from '@/lib/database/client';
+import { createSession, destroySession, getSession } from '@/lib/auth/session';
+import { hashPassword } from '@/lib/auth/password';
 
 export const dynamic = 'force-dynamic';
 
@@ -11,6 +15,14 @@ const DEMO_ROLE_COOKIE = 'atlas_demo_role';
 const schema = z.object({
   role: z.enum(ALLOWED_ROLES),
 });
+
+const DEMO_EMAILS: Record<(typeof ALLOWED_ROLES)[number], string> = {
+  ADMIN: 'admin@atlasknowledge.demo',
+  MANAGER: 'manager@atlasknowledge.demo',
+  EMPLOYEE: 'employee@atlasknowledge.demo',
+  CUSTOMER: 'customer@atlasknowledge.demo',
+  PUBLIC: 'viewer@atlasknowledge.demo',
+};
 
 export async function POST(request: Request) {
   if (!isDemoMode()) {
@@ -29,8 +41,46 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'Invalid demo role requested.' }, { status: 400 });
   }
 
+  const requestedRole = parsed.data.role;
+
+  if (requestedRole === 'PUBLIC') {
+    await destroySession();
+    return NextResponse.json({
+      ok: true,
+      role: 'PUBLIC',
+      message: 'Demo session cleared. You are now unauthenticated PUBLIC.',
+    });
+  }
+
+  const email = DEMO_EMAILS[requestedRole];
+  let user = await prisma.user.findFirst({
+    where: { email },
+  });
+
+  if (!user) {
+    const passwordHash = await hashPassword('AtlasDemo!2026');
+    user = await prisma.user.create({
+      data: {
+        name: `Demo ${requestedRole}`,
+        email,
+        passwordHash,
+        role: requestedRole as Role,
+        status: 'ACTIVE',
+        isDemo: true,
+      },
+    });
+  } else if (user.role !== requestedRole) {
+    user = await prisma.user.update({
+      where: { id: user.id },
+      data: { role: requestedRole as Role },
+    });
+  }
+
+  // Create real authenticated session
+  await createSession(user.id);
+
   const cookieStore = await cookies();
-  cookieStore.set(DEMO_ROLE_COOKIE, parsed.data.role, {
+  cookieStore.set(DEMO_ROLE_COOKIE, requestedRole, {
     httpOnly: true,
     sameSite: 'lax',
     path: '/',
@@ -39,8 +89,8 @@ export async function POST(request: Request) {
 
   return NextResponse.json({
     ok: true,
-    role: parsed.data.role,
-    message: `Demo session role set to ${parsed.data.role}`,
+    role: requestedRole,
+    message: `Demo session established for ${user.email} (${requestedRole})`,
   });
 }
 
@@ -49,11 +99,11 @@ export async function GET() {
     return NextResponse.json({ error: 'Demo role simulation is disabled.' }, { status: 403 });
   }
 
-  const cookieStore = await cookies();
-  const currentRole = cookieStore.get(DEMO_ROLE_COOKIE)?.value ?? 'PUBLIC';
-  const role = ALLOWED_ROLES.includes(currentRole as (typeof ALLOWED_ROLES)[number])
-    ? currentRole
-    : 'PUBLIC';
-
-  return NextResponse.json({ ok: true, role });
+  const session = await getSession();
+  return NextResponse.json({
+    ok: true,
+    role: session.role,
+    isAuthenticated: session.isAuthenticated,
+    user: session.user,
+  });
 }
