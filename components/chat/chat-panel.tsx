@@ -2,7 +2,7 @@
 
 import { useState, useRef, useEffect } from 'react';
 import { Badge, StatusDot } from '@/components/ui/primitives';
-import { cn } from '@/lib/ui';
+import { cn, apiFetch } from '@/lib/ui';
 import type { ChatTurn, Citation, EvidencePacket } from './types';
 import { GROUNDING_META } from './types';
 import { ConfidenceMeter } from '@/components/dashboard/charts';
@@ -76,20 +76,20 @@ export function ChatPanel({
     try {
       setTimeout(() => setPhase('answering'), 300);
 
-      const response = await fetch('/api/chat', {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const res = await apiFetch<any>('/api/chat', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           question,
           conversationId,
         }),
       });
 
-      const data = await response.json();
-
-      if (!response.ok || data.ok === false) {
-        throw new Error(data.error || 'Failed to generate answer.');
+      if (!res.ok) {
+        throw new Error(res.error || 'Failed to generate answer.');
       }
+
+      const data = res.data;
 
       if (data.conversationId) {
         setConversationId(data.conversationId);
