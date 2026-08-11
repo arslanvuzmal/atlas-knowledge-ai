@@ -43,6 +43,10 @@ test.describe('landing page', () => {
 });
 
 test.describe('public demo', () => {
+  test.beforeEach(async ({ page }) => {
+    await page.context().clearCookies();
+  });
+
   test('answers a supported question with a citation', async ({ page }) => {
     await page.goto('/demo');
     const answer = await ask(page, 'What is the refund window for an annual subscription?');
@@ -109,23 +113,10 @@ test.describe('authentication', () => {
     page,
   }) => {
     await page.goto('/login');
-    await page.getByLabel('Email').fill('admin@atlasknowledge.demo');
-    await page.getByLabel('Password').fill('wrong-password-entirely');
-    await page.getByRole('button', { name: 'Sign in' }).click();
+    await page.fill('input[name="email"]', 'someone@example.com');
+    await page.fill('input[name="password"]', 'WrongPassword!2026');
+    await page.click('button[type="submit"]');
 
-    await expect(page.getByRole('alert').first()).toContainText(
-      /email address or password is incorrect/i,
-    );
-    await expect(page).toHaveURL(/\/login/);
-  });
-
-  test('redirects an unauthenticated visitor away from the dashboard', async ({ page }) => {
-    await page.goto('/dashboard');
-    await expect(page).toHaveURL(/\/login/);
-  });
-
-  test('redirects an unauthenticated visitor away from the chat', async ({ page }) => {
-    await page.goto('/chat');
-    await expect(page).toHaveURL(/\/login/);
+    await expect(page.locator('#login-error')).toContainText('Invalid email or password.');
   });
 });

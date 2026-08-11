@@ -95,14 +95,21 @@ export function ChatPanel({
         setConversationId(data.conversationId);
       }
 
+      const answerText =
+        typeof data.answer === 'string'
+          ? data.answer
+          : typeof data.answer?.text === 'string'
+            ? data.answer.text
+            : '';
+
       const assistantTurn: ChatTurn = {
         id: data.messageId || `ast_${Date.now()}`,
         role: 'assistant',
-        content: data.answer.text,
-        confidence: data.answer.confidence,
-        grounding: data.answer.grounding,
-        citations: data.answer.citations,
-        evidence: data.answer.evidence,
+        content: answerText,
+        confidence: data.confidence ?? data.answer?.confidence,
+        grounding: data.grounding ?? data.answer?.grounding,
+        citations: data.citations ?? data.answer?.citations,
+        evidence: data.evidence ?? data.answer?.evidence,
         relatedSources: data.relatedSources,
         createdAt: new Date().toISOString(),
       };
@@ -352,11 +359,12 @@ function AnswerBody({
   hoveredOrdinal,
   onHoverOrdinal,
 }: {
-  content: string;
+  content?: string;
   hoveredOrdinal: number | null;
   onHoverOrdinal: (ordinal: number | null) => void;
 }) {
-  const paragraphs = content.split(/\n{2,}/);
+  const safeContent = content ?? '';
+  const paragraphs = safeContent.split(/\n{2,}/);
 
   return (
     <div className="prose-answer">
