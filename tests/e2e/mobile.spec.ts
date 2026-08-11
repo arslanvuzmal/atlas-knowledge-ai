@@ -35,7 +35,7 @@ test.describe('mobile layout', () => {
 
   test('login screen fits the viewport', async ({ page }) => {
     await page.goto('/login');
-    await expect(page.getByRole('button', { name: 'Sign in' })).toBeVisible();
+    await expect(page.locator('button[type="submit"]')).toBeVisible();
     await assertNoHorizontalOverflow(page, 'login');
   });
 

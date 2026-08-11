@@ -18,6 +18,7 @@ test.describe('Flagship Commercial Demo Journey — Dynamic Visitor Identity', (
     await input.fill('Hi');
     await input.press('Enter');
     await expect(page.locator('body')).toContainText(/Hi|Hello|welcome/i, { timeout: 25000 });
+    await expect(input).toBeEnabled({ timeout: 25000 });
 
     // 3. Commercial Evaluation Context
     await input.fill("We're evaluating this for around 80 users and want to deploy next month.");
@@ -28,11 +29,13 @@ test.describe('Flagship Commercial Demo Journey — Dynamic Visitor Identity', (
         timeout: 25000,
       },
     );
+    await expect(input).toBeEnabled({ timeout: 25000 });
 
     // 4. Factual Knowledge Query: Team plan pricing
     await input.fill('What does the Team plan cost?');
     await input.press('Enter');
     await expect(page.locator('body')).toContainText(/79|per user/i, { timeout: 25000 });
+    await expect(input).toBeEnabled({ timeout: 25000 });
 
     // 5. Factual Knowledge Query: Security controls
     await input.fill('What security controls do you provide?');
@@ -40,6 +43,7 @@ test.describe('Flagship Commercial Demo Journey — Dynamic Visitor Identity', (
     await expect(page.locator('body')).toContainText(/AES-256|TLS 1.3|SOC 2|security/i, {
       timeout: 25000,
     });
+    await expect(input).toBeEnabled({ timeout: 25000 });
 
     // 6. Identity Upgrade & Sales Follow-Up Request
     await input.fill(
