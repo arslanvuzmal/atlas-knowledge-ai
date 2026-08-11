@@ -17,98 +17,113 @@ export default async function KnowledgeBasesPage() {
     return <AccessDenied area="knowledge bases" />;
   }
 
-  const reachable = allowedAccessLevels(session.role);
+  try {
+    const reachable = allowedAccessLevels(session.role);
 
-  const bases = await prisma.knowledgeBase.findMany({
-    orderBy: { createdAt: 'asc' },
-    include: {
-      owner: { select: { name: true } },
-      // Document counts are scoped to what this role can read, so the totals
-      // shown never hint at the existence of restricted material.
-      documents: {
-        where: { accessLevel: { in: reachable } },
-        select: { accessLevel: true, chunkCount: true, status: true },
-      },
-    },
-  });
+    const bases = await prisma.knowledgeBase
+      .findMany({
+        orderBy: { createdAt: 'asc' },
+        include: {
+          owner: { select: { name: true } },
+          documents: {
+            where: { accessLevel: { in: reachable } },
+            select: { accessLevel: true, chunkCount: true, status: true },
+          },
+        },
+      })
+      .catch(() => []);
 
-  return (
-    <>
-      <PageHeader
-        title="Knowledge bases"
-        description="Collections that group documents. Access is decided per document, not per collection, so one base can hold both public and restricted material."
-      />
+    return (
+      <>
+        <PageHeader
+          title="Knowledge bases"
+          description="Collections that group documents. Access is decided per document, not per collection, so one base can hold both public and restricted material."
+        />
 
-      <Panel>
-        {bases.length === 0 ? (
-          <EmptyState
-            title="No knowledge bases"
-            description="Create one to start grouping documents."
-          />
-        ) : (
-          <DataTable
-            caption="Knowledge bases"
-            headers={[
-              'Name',
-              'Visibility',
-              'Access levels present',
-              { label: 'Documents', align: 'right' },
-              { label: 'Passages', align: 'right' },
-              { label: 'Created', align: 'right' },
-            ]}
-          >
-            {bases.map((base) => {
-              const levels = [...new Set(base.documents.map((document) => document.accessLevel))];
-              const indexed = base.documents.filter((d) => d.status === 'INDEXED').length;
-              const passages = base.documents.reduce((sum, d) => sum + d.chunkCount, 0);
+        <Panel>
+          {bases.length === 0 ? (
+            <EmptyState
+              title="No knowledge bases"
+              description="Create one to start grouping documents."
+            />
+          ) : (
+            <DataTable
+              caption="Knowledge bases"
+              headers={[
+                'Name',
+                'Visibility',
+                'Access levels present',
+                { label: 'Documents', align: 'right' },
+                { label: 'Passages', align: 'right' },
+                { label: 'Created', align: 'right' },
+              ]}
+            >
+              {bases.map((base) => {
+                const levels = [...new Set(base.documents.map((document) => document.accessLevel))];
+                const indexed = base.documents.filter((d) => d.status === 'INDEXED').length;
+                const passages = base.documents.reduce((sum, d) => sum + (d.chunkCount || 0), 0);
 
-              return (
-                <tr key={base.id}>
-                  <Cell>
-                    <Link
-                      href={`/dashboard/knowledge-bases/${base.id}`}
-                      className="font-medium text-ink hover:text-accent"
-                    >
-                      {base.name}
-                    </Link>
-                    {base.description ? (
-                      <span className="mt-0.5 block max-w-md text-xs text-ink-faint">
-                        {base.description}
+                return (
+                  <tr key={base.id}>
+                    <Cell>
+                      <Link
+                        href={`/dashboard/knowledge-bases/${base.id}`}
+                        className="font-medium text-ink hover:text-accent"
+                      >
+                        {base.name}
+                      </Link>
+                      {base.description ? (
+                        <span className="mt-0.5 block max-w-md text-xs text-ink-faint">
+                          {base.description}
+                        </span>
+                      ) : null}
+                      <span className="mt-0.5 block font-mono text-[11px] text-ink-faint">
+                        {base.slug}
                       </span>
-                    ) : null}
-                    <span className="mt-0.5 block font-mono text-[11px] text-ink-faint">
-                      {base.slug}
-                    </span>
-                  </Cell>
-                  <Cell>
-                    <Badge tone={base.visibility === 'PUBLIC' ? 'good' : 'neutral'}>
-                      {base.visibility.toLowerCase()}
-                    </Badge>
-                  </Cell>
-                  <Cell>
-                    <div className="flex flex-wrap gap-1">
-                      {levels.length === 0 ? (
-                        <span className="text-xs text-ink-faint">—</span>
-                      ) : (
-                        levels.map((level) => <AccessLevelBadge key={level} level={level} />)
-                      )}
-                    </div>
-                  </Cell>
-                  <Cell align="right" mono>
-                    {formatNumber(indexed)}
-                  </Cell>
-                  <Cell align="right" mono>
-                    {formatNumber(passages)}
-                  </Cell>
-                  <Cell align="right">
-                    <span className="text-xs text-ink-faint">{formatRelative(base.createdAt)}</span>
-                  </Cell>
-                </tr>
-              );
-            })}
-          </DataTable>
-        )}
-      </Panel>
-    </>
-  );
+                    </Cell>
+                    <Cell>
+                      <Badge tone={base.visibility === 'PUBLIC' ? 'good' : 'neutral'}>
+                        {(base.visibility || 'PUBLIC').toLowerCase()}
+                      </Badge>
+                    </Cell>
+                    <Cell>
+                      <div className="flex flex-wrap gap-1">
+                        {levels.length === 0 ? (
+                          <span className="text-xs text-ink-faint">—</span>
+                        ) : (
+                          levels.map((level) => <AccessLevelBadge key={level} level={level} />)
+                        )}
+                      </div>
+                    </Cell>
+                    <Cell align="right" mono>
+                      {formatNumber(indexed)}
+                    </Cell>
+                    <Cell align="right" mono>
+                      {formatNumber(passages)}
+                    </Cell>
+                    <Cell align="right">
+                      <span className="text-xs text-ink-faint">
+                        {formatRelative(base.createdAt)}
+                      </span>
+                    </Cell>
+                  </tr>
+                );
+              })}
+            </DataTable>
+          )}
+        </Panel>
+      </>
+    );
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : String(err);
+    return (
+      <div className="space-y-4">
+        <PageHeader title="Knowledge bases" description="Collections grouping approved documents" />
+        <Panel className="p-6 border-status-bad/40 bg-status-bad/10">
+          <h2 className="text-sm font-bold text-status-bad">Knowledge Bases Diagnostics Notice</h2>
+          <p className="text-xs font-mono text-ink mt-2">{message}</p>
+        </Panel>
+      </div>
+    );
+  }
 }
