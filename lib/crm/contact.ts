@@ -61,11 +61,9 @@ export async function resolveIdentity(input: ResolveIdentityInput): Promise<Cont
   } = input;
 
   let workspaceId = inputWorkspaceId;
-  if (!workspaceId || workspaceId === 'demo-workspace-northstar') {
-    const dbWs = await prisma.workspace.findFirst().catch(() => null);
-    if (dbWs) {
-      workspaceId = dbWs.id;
-    }
+  const dbWs = await prisma.workspace.findFirst().catch(() => null);
+  if (dbWs) {
+    workspaceId = dbWs.id;
   }
 
   // 1. Match by Email if provided
