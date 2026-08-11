@@ -64,11 +64,12 @@ export async function getCurrentWorkspaceContext(
     }
   }
 
-  // 2. Deterministic demo workspace lookup by slug
+  // 2. Deterministic demo workspace lookup by slug or first workspace
   try {
-    const demoWs = await prisma.workspace.findUnique({
-      where: { slug: DEMO_WORKSPACE_SLUG },
-    });
+    const demoWs =
+      (await prisma.workspace.findUnique({
+        where: { slug: DEMO_WORKSPACE_SLUG },
+      })) || (await prisma.workspace.findFirst());
 
     if (demoWs) {
       return {

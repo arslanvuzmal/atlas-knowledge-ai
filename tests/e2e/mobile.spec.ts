@@ -25,6 +25,7 @@ test.describe('mobile layout', () => {
   });
 
   test('public demo is usable and fits the viewport', async ({ page }) => {
+    await page.context().clearCookies();
     await page.goto('/demo');
 
     const input = page.getByLabel('Ask a question');
@@ -34,6 +35,7 @@ test.describe('mobile layout', () => {
   });
 
   test('login screen fits the viewport', async ({ page }) => {
+    await page.context().clearCookies();
     await page.goto('/login');
     await expect(page.locator('button[type="submit"]')).toBeVisible();
     await assertNoHorizontalOverflow(page, 'login');
@@ -58,6 +60,7 @@ test.describe('mobile layout', () => {
   });
 
   test('chat is usable on a small screen', async ({ page }) => {
+    await page.context().clearCookies();
     await page.goto('/demo');
 
     await page.getByLabel('Ask a question').fill('What is the free trial length?');

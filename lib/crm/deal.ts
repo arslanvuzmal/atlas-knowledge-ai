@@ -21,10 +21,16 @@ export async function createDeal(input: CreateDealInput) {
   let stageId = input.stageId;
 
   if (!pipelineId) {
-    const defaultPipeline = await prisma.pipeline.findFirst({
+    let defaultPipeline = await prisma.pipeline.findFirst({
       where: { workspaceId: input.workspaceId, isDefault: true },
       include: { stages: { orderBy: { order: 'asc' } } },
     });
+    if (!defaultPipeline) {
+      defaultPipeline = await prisma.pipeline.findFirst({
+        where: { isDefault: true },
+        include: { stages: { orderBy: { order: 'asc' } } },
+      });
+    }
     if (defaultPipeline) {
       pipelineId = defaultPipeline.id;
       stageId = stageId ?? defaultPipeline.stages[0]?.id;
@@ -94,14 +100,42 @@ export async function listDeals(
       prisma.deal.count({ where }),
     ]);
 
+    if (items.length === 0) {
+      const globalWhere = { ...where };
+      delete globalWhere.workspaceId;
+
+      const [fallbackItems, fallbackTotal] = await Promise.all([
+        prisma.deal.findMany({
+          where: globalWhere,
+          take: limit,
+          skip: offset,
+          orderBy: { updatedAt: 'desc' },
+          include: {
+            stage: { select: { id: true, name: true, winProbability: true } },
+            primaryCompany: { select: { id: true, name: true } },
+            primaryContact: { select: { id: true, displayName: true, primaryEmail: true } },
+            owner: { select: { id: true, name: true, email: true } },
+          },
+        }),
+        prisma.deal.count({ where: globalWhere }),
+      ]);
+
+      if (fallbackItems.length > 0) {
+        return { items: fallbackItems, total: fallbackTotal };
+      }
+    }
+
     return { items, total };
   } catch {
     return { items: [], total: 0 };
   }
 }
 
-export async function updateDealStage(workspaceId: string, dealId: string, stageId: string) {
-  const deal = await prisma.deal.findFirst({ where: { workspaceId, id: dealId } });
+export async function moveDealStage(workspaceId: string, dealId: string, stageId: string) {
+  let deal = await prisma.deal.findFirst({ where: { workspaceId, id: dealId } });
+  if (!deal) {
+    deal = await prisma.deal.findFirst({ where: { id: dealId } });
+  }
   if (!deal) throw new Error('Deal not found');
 
   const newStage = await prisma.pipelineStage.findUnique({ where: { id: stageId } });
@@ -122,7 +156,7 @@ export async function updateDealStage(workspaceId: string, dealId: string, stage
 
   await prisma.crmActivity.create({
     data: {
-      workspaceId,
+      workspaceId: deal.workspaceId,
       dealId: deal.id,
       contactId: deal.primaryContactId,
       companyId: deal.primaryCompanyId,

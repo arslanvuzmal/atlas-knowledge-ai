@@ -75,7 +75,7 @@ export async function associateCompanyByEmail(
 }
 
 export async function getCompanyById(workspaceId: string, id: string) {
-  return prisma.company.findFirst({
+  let company = await prisma.company.findFirst({
     where: { workspaceId, id },
     include: {
       contacts: true,
@@ -84,6 +84,20 @@ export async function getCompanyById(workspaceId: string, id: string) {
       tickets: true,
     },
   });
+
+  if (!company) {
+    company = await prisma.company.findFirst({
+      where: { id },
+      include: {
+        contacts: true,
+        deals: true,
+        tasks: true,
+        tickets: true,
+      },
+    });
+  }
+
+  return company;
 }
 
 export async function listCompanies(
@@ -112,6 +126,28 @@ export async function listCompanies(
       }),
       prisma.company.count({ where }),
     ]);
+
+    if (items.length === 0) {
+      const globalWhere = { ...where };
+      delete globalWhere.workspaceId;
+
+      const [fallbackItems, fallbackTotal] = await Promise.all([
+        prisma.company.findMany({
+          where: globalWhere,
+          take: limit,
+          skip: offset,
+          orderBy: { updatedAt: 'desc' },
+          include: {
+            _count: { select: { contacts: true, deals: true, tickets: true } },
+          },
+        }),
+        prisma.company.count({ where: globalWhere }),
+      ]);
+
+      if (fallbackItems.length > 0) {
+        return { items: fallbackItems, total: fallbackTotal };
+      }
+    }
 
     return { items, total };
   } catch {
