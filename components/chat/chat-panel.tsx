@@ -214,7 +214,7 @@ export function ChatPanel({
                 disabled={busy || !input.trim()}
                 className="rounded bg-accent px-4 py-2 text-xs font-semibold text-white transition hover:bg-accent/90 disabled:opacity-40"
               >
-                Send
+                Ask
               </button>
             </form>
           </div>

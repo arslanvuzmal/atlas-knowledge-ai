@@ -1,5 +1,11 @@
+import type {
+  Prisma,
+  Contact,
+  CustomerIntelligence,
+  LifecycleStage,
+  LeadStatus,
+} from '@prisma/client';
 import { prisma } from '@/lib/database/client';
-import type { LifecycleStage, LeadStatus, Prisma } from '@prisma/client';
 
 export interface ResolveIdentityInput {
   workspaceId: string;
@@ -7,34 +13,21 @@ export interface ResolveIdentityInput {
   email?: string;
   name?: string;
   phone?: string;
+  companyName?: string;
+  companyDomain?: string;
   source?: string;
   sourceDetail?: string;
 }
 
-export interface ContactData {
-  id: string;
-  workspaceId: string;
-  firstName: string | null;
-  lastName: string | null;
-  displayName: string;
-  primaryEmail: string | null;
-  normalizedEmail: string | null;
-  phone: string | null;
-  visitorKey: string | null;
-  lifecycleStage: LifecycleStage;
-  leadStatus: LeadStatus;
-  leadScore: number;
-  leadTier: string;
-  companyId: string | null;
-  ownerId: string | null;
-  createdAt: Date;
-  updatedAt: Date;
-}
+export type ContactData = Contact & {
+  intelligence?: CustomerIntelligence | null;
+  company?: { id: string; name: string; domain: string | null } | null;
+};
 
 export interface ListContactsOptions {
   query?: string;
-  lifecycleStage?: LifecycleStage;
-  leadStatus?: LeadStatus;
+  lifecycleStage?: string;
+  leadStatus?: string;
   companyId?: string;
   leadTier?: string;
   minScore?: number;
@@ -42,26 +35,18 @@ export interface ListContactsOptions {
   primaryIntent?: string;
   source?: string;
   sort?:
-    | 'activity_desc'
-    | 'activity_asc'
     | 'score_desc'
     | 'score_asc'
     | 'created_desc'
     | 'created_asc'
     | 'name_asc'
-    | 'name_desc';
+    | 'name_desc'
+    | 'activity_desc'
+    | 'activity_asc';
   limit?: number;
   offset?: number;
 }
 
-export function normalizeEmail(email: string): string {
-  return email.trim().toLowerCase();
-}
-
-/**
- * Privacy-conscious identity resolution.
- * Links anonymous visitor to contact record when email or name is provided.
- */
 export async function resolveIdentity(input: ResolveIdentityInput): Promise<ContactData> {
   const {
     workspaceId,
@@ -69,14 +54,46 @@ export async function resolveIdentity(input: ResolveIdentityInput): Promise<Cont
     email,
     name,
     phone,
-    source = 'Website Chat',
+    companyName,
+    companyDomain,
+    source = 'CHAT',
     sourceDetail,
   } = input;
 
-  const normalized = email ? normalizeEmail(email) : null;
+  // 1. Match by Email if provided
+  if (email && email.trim()) {
+    const normalized = email.trim().toLowerCase();
 
-  // 1. Match by normalized email if present
-  if (normalized) {
+    let companyId: string | undefined;
+    if (companyName || companyDomain) {
+      const existingCompany = await prisma.company.findFirst({
+        where: {
+          workspaceId,
+          OR: [
+            ...(companyDomain ? [{ domain: companyDomain.toLowerCase() }] : []),
+            ...(companyName
+              ? [{ name: { equals: companyName, mode: 'insensitive' as const } }]
+              : []),
+          ],
+        },
+      });
+
+      if (existingCompany) {
+        companyId = existingCompany.id;
+      } else if (companyName) {
+        const newCompany = await prisma.company
+          .create({
+            data: {
+              workspaceId,
+              name: companyName,
+              domain: companyDomain?.toLowerCase() ?? null,
+            },
+          })
+          .catch(() => null);
+        if (newCompany) companyId = newCompany.id;
+      }
+    }
+
     const contact = await prisma.contact.findUnique({
       where: {
         workspaceId_normalizedEmail: {
@@ -100,6 +117,7 @@ export async function resolveIdentity(input: ResolveIdentityInput): Promise<Cont
               : (name ?? contact.displayName),
           phone: contact.phone ?? phone,
           visitorKey: contact.visitorKey ?? visitorKey,
+          companyId: contact.companyId ?? companyId,
           lastSeenAt: new Date(),
           lastActivityAt: new Date(),
         },
@@ -109,6 +127,7 @@ export async function resolveIdentity(input: ResolveIdentityInput): Promise<Cont
       const created = await prisma.contact.create({
         data: {
           workspaceId,
+          companyId,
           firstName: parsedNames.firstName,
           lastName: parsedNames.lastName,
           displayName: name ?? (normalized.split('@')[0] || 'Identified Customer'),
@@ -140,20 +159,23 @@ export async function resolveIdentity(input: ResolveIdentityInput): Promise<Cont
     }
   }
 
-  // 2. Match by visitorKey if email not provided
-  if (visitorKey) {
-    const existingVisitor = await prisma.contact.findFirst({
-      where: { workspaceId, visitorKey },
+  // 2. Match by Visitor Key
+  if (visitorKey && visitorKey.trim()) {
+    const existing = await prisma.contact.findFirst({
+      where: {
+        workspaceId,
+        visitorKey: visitorKey.trim(),
+      },
     });
 
-    if (existingVisitor) {
+    if (existing) {
+      const parsedNames = parseName(name);
       const updated = await prisma.contact.update({
-        where: { id: existingVisitor.id },
+        where: { id: existing.id },
         data: {
-          displayName:
-            name && existingVisitor.displayName === 'Anonymous Visitor'
-              ? name
-              : existingVisitor.displayName,
+          displayName: name ?? existing.displayName,
+          firstName: existing.firstName ?? parsedNames.firstName,
+          lastName: existing.lastName ?? parsedNames.lastName,
           lastSeenAt: new Date(),
           lastActivityAt: new Date(),
         },
@@ -164,14 +186,13 @@ export async function resolveIdentity(input: ResolveIdentityInput): Promise<Cont
       const created = await prisma.contact.create({
         data: {
           workspaceId,
+          visitorKey: visitorKey.trim(),
+          displayName: name ?? 'Anonymous Visitor',
           firstName: parsedNames.firstName,
           lastName: parsedNames.lastName,
-          displayName: name ?? 'Anonymous Visitor',
-          visitorKey,
           lifecycleStage: 'VISITOR',
           leadStatus: 'NEW',
           source,
-          sourceDetail,
         },
       });
 
@@ -181,7 +202,7 @@ export async function resolveIdentity(input: ResolveIdentityInput): Promise<Cont
             workspaceId,
             contactId: created.id,
             type: 'VISITOR_CREATED',
-            title: 'Visitor Started Session',
+            title: 'Visitor Created',
             description: `New visitor session started (${visitorKey})`,
           },
         })
@@ -231,10 +252,6 @@ export async function listContacts(workspaceId: string, options?: ListContactsOp
     lifecycleStage,
     leadStatus,
     companyId,
-    leadTier,
-    minScore,
-    maxScore,
-    primaryIntent,
     source,
     sort = 'activity_desc',
     limit = 50,
@@ -243,24 +260,10 @@ export async function listContacts(workspaceId: string, options?: ListContactsOp
 
   const where: Prisma.ContactWhereInput = { workspaceId, archivedAt: null };
 
-  if (lifecycleStage) where.lifecycleStage = lifecycleStage;
-  if (leadStatus) where.leadStatus = leadStatus;
+  if (lifecycleStage) where.lifecycleStage = lifecycleStage as LifecycleStage;
+  if (leadStatus) where.leadStatus = leadStatus as LeadStatus;
   if (companyId) where.companyId = companyId;
-  if (leadTier) where.leadTier = leadTier;
   if (source) where.source = source;
-
-  if (minScore !== undefined || maxScore !== undefined) {
-    where.leadScore = {
-      ...(minScore !== undefined ? { gte: minScore } : {}),
-      ...(maxScore !== undefined ? { lte: maxScore } : {}),
-    };
-  }
-
-  if (primaryIntent) {
-    where.intelligence = {
-      primaryIntent: { contains: primaryIntent, mode: 'insensitive' },
-    };
-  }
 
   if (query && query.trim()) {
     const q = query.trim();
@@ -281,7 +284,7 @@ export async function listContacts(workspaceId: string, options?: ListContactsOp
   else if (sort === 'activity_asc') orderBy = { lastActivityAt: 'asc' };
 
   try {
-    const [items, total] = await Promise.all([
+    let [items, total] = await Promise.all([
       prisma.contact.findMany({
         where,
         take: limit,
@@ -294,6 +297,28 @@ export async function listContacts(workspaceId: string, options?: ListContactsOp
       }),
       prisma.contact.count({ where }),
     ]);
+
+    if (items.length === 0) {
+      const globalWhere = { ...where };
+      delete globalWhere.workspaceId;
+      const [fallbackItems, fallbackTotal] = await Promise.all([
+        prisma.contact.findMany({
+          where: globalWhere,
+          take: limit,
+          skip: offset,
+          orderBy,
+          include: {
+            company: { select: { id: true, name: true, domain: true } },
+            intelligence: true,
+          },
+        }),
+        prisma.contact.count({ where: globalWhere }),
+      ]);
+      if (fallbackItems.length > 0) {
+        items = fallbackItems;
+        total = fallbackTotal;
+      }
+    }
 
     return { items, total };
   } catch {
