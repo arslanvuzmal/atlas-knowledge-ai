@@ -89,9 +89,12 @@ const UNSAFE_PATTERNS = [
 
 const STRICT_ORGANIZATIONAL_PATTERNS = [
   /\b(our|we|northstar|atlas)\b/i,
+  /\b(annual\s+leave|leave|vacation|time\s+off|holiday|parental\s+leave|maternity|paternity|sick\s+leave|bereavement)\b/i,
+  /\b(employee|employees|staff|worker|workers)\b/i,
   /\b(refund\s+policy|refund\s+window|employee\s+handbook|handbook|team\s+plan|starter\s+plan|enterprise\s+plan|support\s+faq|support\s+response|incident\s+response|security\s+overview|sales\s+enablement|product\s+manual)\b/i,
-  /\b(refund|refunds|pricing|subscription|trial|free\s+trial|sla|on-call|oncall)\b/i,
+  /\b(refund|refunds|pricing|subscription|trial|free\s+trial|sla|on-call|oncall|benefits|compensation|reimbursement|allowance)\b/i,
   /\b(do\s+you|can\s+you|does\s+atlas|does\s+northstar|what\s+services|what\s+products|insurance)\b/i,
+  /\b(how\s+many\s+days|how\s+much\s+leave|how\s+much\s+vacation|leave\s+allowance)\b/i,
   /\bencryption\s+is\s+used\b/i,
   /\bdata\s+at\s+rest\b/i,
 ];

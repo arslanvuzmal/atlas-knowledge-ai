@@ -61,16 +61,16 @@ export interface PipelineMetadata {
     latencyMs: number;
   };
   confidence: {
-    value: number;
+    value: number | null;
     label: string;
-    topScore: number;
+    topScore: number | null;
     coverage: number;
     agreement: number;
     margin?: number;
     supportingChunks: number;
     uncoveredTerms: string[];
   };
-  grounding: Grounding;
+  grounding: Grounding | null;
   answer: {
     provider: string;
     model: string;

@@ -4,7 +4,6 @@ import { z } from 'zod';
 import { guardRequest } from '@/lib/auth/guard';
 import { ask } from '@/lib/chat/service';
 import { validateQuestion } from '@/lib/retrieval/query';
-import { prisma } from '@/lib/database/client';
 import { randomToken } from '@/lib/security/hash';
 import { logger } from '@/lib/observability/logger';
 
@@ -61,26 +60,11 @@ export async function POST(request: Request) {
     }
   }
 
-  let knowledgeBaseId = parsed.data.knowledgeBaseId ?? null;
-  if (knowledgeBaseId) {
-    const existingKb = await prisma.knowledgeBase.findUnique({
-      where: { id: knowledgeBaseId },
-      select: { id: true },
-    });
-    if (!existingKb) knowledgeBaseId = null;
-  }
-
-  if (!knowledgeBaseId) {
-    const primary = await prisma.knowledgeBase.findFirst({
-      orderBy: { createdAt: 'asc' },
-      select: { id: true },
-    });
-    if (primary) {
-      knowledgeBaseId = primary.id;
-    }
-  }
-
+  // NO KB database lookups before routing!
+  // Routing MUST execute first inside ask(). Pass raw knowledgeBaseId.
+  const knowledgeBaseId = parsed.data.knowledgeBaseId ?? null;
   const startedAt = Date.now();
+
   try {
     const result = await ask({
       question: validation.question,
@@ -91,6 +75,9 @@ export async function POST(request: Request) {
       knowledgeBaseId,
       ip: guard.ip,
     });
+
+    const hasConfidence =
+      typeof result.answer.confidence === 'number' && Number.isFinite(result.answer.confidence);
 
     return NextResponse.json({
       ok: true,
@@ -130,9 +117,10 @@ export async function POST(request: Request) {
           latencyMs: result.retrieval.latencyMs,
         },
         confidence: {
-          value: result.answer.confidence ?? 1.0,
+          // NO fake 1.0 confidence fallback for non-RAG routes!
+          value: result.answer.confidence,
           label: result.answer.evidence.confidenceLabel,
-          topScore: Number((result.answer.confidence ?? 1.0).toFixed(4)),
+          topScore: hasConfidence ? Number(result.answer.confidence!.toFixed(4)) : null,
           coverage: result.answer.evidence.coverage,
           agreement:
             result.answer.evidence.supportingPassages > 0

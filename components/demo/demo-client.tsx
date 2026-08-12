@@ -189,12 +189,16 @@ export function DemoClient({ demoMode }: { demoMode: boolean }) {
                       <div className="flex justify-between">
                         <span className="text-ink-faint">Confidence:</span>
                         <span className="text-ink font-bold">
-                          {(pipelineMeta.confidence.value * 100).toFixed(1)}%
+                          {typeof pipelineMeta.confidence.value === 'number'
+                            ? `${(pipelineMeta.confidence.value * 100).toFixed(1)}%`
+                            : 'N/A'}
                         </span>
                       </div>
                       <div className="flex justify-between">
                         <span className="text-ink-faint">Grounding:</span>
-                        <span className="text-accent uppercase">{pipelineMeta.grounding}</span>
+                        <span className="text-accent uppercase">
+                          {pipelineMeta.grounding ?? 'N/A'}
+                        </span>
                       </div>
                       <div className="flex justify-between">
                         <span className="text-ink-faint">Citations:</span>

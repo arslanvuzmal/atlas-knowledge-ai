@@ -46,6 +46,7 @@ describe('Atlas Chat Router', () => {
       'What security controls do we use?',
       'What does our employee handbook say?',
       'What is our SLA?',
+      'How many days of annual leave do employees receive?',
     ];
 
     for (const q of orgQuestions) {
