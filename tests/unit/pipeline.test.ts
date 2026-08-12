@@ -713,4 +713,14 @@ describe('environment validation', () => {
       expect((error as { issues: string[] }).issues.length).toBeGreaterThan(1);
     }
   });
+
+  it('accepts GOOGLE_GENERATIVE_AI_API_KEY as fallback for GEMINI_API_KEY', () => {
+    const env = parseEnv(
+      asEnv({
+        ...base,
+        GOOGLE_GENERATIVE_AI_API_KEY: 'test-google-genai-key-12345',
+      }),
+    );
+    expect(env.GEMINI_API_KEY).toBe('test-google-genai-key-12345');
+  });
 });

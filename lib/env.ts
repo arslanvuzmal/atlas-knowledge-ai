@@ -88,6 +88,8 @@ const schema = z.object({
   OPENAI_API_KEY: optionalSecret,
   ANTHROPIC_API_KEY: optionalSecret,
   GEMINI_API_KEY: optionalSecret,
+  GOOGLE_GENERATIVE_AI_API_KEY: optionalSecret,
+  GOOGLE_API_KEY: optionalSecret,
   OPENROUTER_API_KEY: optionalSecret,
   HUGGINGFACE_API_KEY: optionalSecret,
   OLLAMA_BASE_URL: optionalSecret,
@@ -140,6 +142,11 @@ export function parseEnv(source: NodeJS.ProcessEnv = process.env): Env {
   }
 
   const parsed = result.data;
+
+  // Populate GEMINI_API_KEY fallback
+  if (!parsed.GEMINI_API_KEY) {
+    parsed.GEMINI_API_KEY = parsed.GOOGLE_GENERATIVE_AI_API_KEY ?? parsed.GOOGLE_API_KEY;
+  }
 
   // Cross-field rules that a per-field schema cannot express.
   const crossFieldIssues: string[] = [];
