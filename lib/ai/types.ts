@@ -10,6 +10,7 @@ export interface GenerationRequest {
   messages: ChatMessage[];
   maxTokens: number;
   temperature: number;
+  enableLiveSearch?: boolean;
   signal?: AbortSignal;
 }
 
@@ -19,6 +20,7 @@ export interface GenerationResult {
   model: string;
   latencyMs: number;
   isDemo: boolean;
+  sources?: Array<{ title: string; domain: string; uri: string }>;
   /** Populated when the provider reports usage. */
   usage?: { inputTokens?: number; outputTokens?: number };
 }

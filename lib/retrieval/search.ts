@@ -80,10 +80,11 @@ export async function retrieve(request: RetrievalRequest): Promise<RetrievalResu
     ? keywordSearch(preparation.effective, { ...filters, limit: settings.retrievalCount })
     : Promise.resolve([] as RetrievedChunkRow[]);
 
-  const queryVectorPromise = embedQuery(preparation.effective);
+  const vectorPromise = embedQuery(preparation.effective).then((queryVector) =>
+    vectorSearch(queryVector, filters),
+  );
 
-  const [queryVector, keywordRows] = await Promise.all([queryVectorPromise, keywordPromise]);
-  const vectorRows = await vectorSearch(queryVector, filters);
+  const [keywordRows, vectorRows] = await Promise.all([keywordPromise, vectorPromise]);
 
   const fused = settings.hybridSearch
     ? reciprocalRankFusion([vectorRows, keywordRows])

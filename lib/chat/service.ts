@@ -18,6 +18,7 @@ import { routeMessage, getConversationalResponse, type ChatRoute } from './inten
 import { resolveIdentity } from '@/lib/crm/contact';
 import { getCurrentWorkspaceContext } from '@/lib/workspace/context';
 import { enqueueOutboxEvent, processOutboxEvents } from '@/lib/outbox/worker';
+import { trackKnowledgeGap } from '@/lib/knowledge-gap';
 
 /**
  * Chat orchestration and persistence.
@@ -87,12 +88,20 @@ async function resolveConversation(input: AskInput): Promise<{ id: string; isNew
   return { id: created.id, isNew: true };
 }
 
+function buildConversationSummary(
+  history: ConversationTurn[],
+  question: string,
+  answer: AnswerResult,
+): string {
+  const userTurns = history.filter((t) => t.role === 'USER').map((t) => t.content);
+  userTurns.push(question);
+  return `Escalated conversation (${userTurns.length} turns). Latest: "${question.slice(0, 100)}". Outcome: ${answer.grounding ?? 'N/A'}.`;
+}
+
 export async function ask(input: AskInput): Promise<AskOutput> {
   const traceId = newCorrelationId();
   const log = logger.child({ traceId, role: input.role });
   const startedAt = Date.now();
-
-  const [settings, modelSettings] = await Promise.all([getRetrievalSettings(), getModelSettings()]);
 
   const { id: conversationId } = await resolveConversation(input);
 
@@ -135,7 +144,7 @@ export async function ask(input: AskInput): Promise<AskOutput> {
   }));
 
   // Persist user question
-  await prisma.message.create({
+  const userMessage = await prisma.message.create({
     data: {
       conversationId,
       role: 'USER',
@@ -144,7 +153,7 @@ export async function ask(input: AskInput): Promise<AskOutput> {
     },
   });
 
-  // --- Multi-lane Route Determination ----------------------------------------
+  // --- Multi-lane Route Determination FIRST ----------------------------------
   const routeRes = routeMessage(input.question, history);
 
   log.debug('Route determined', {
@@ -163,8 +172,8 @@ export async function ask(input: AskInput): Promise<AskOutput> {
     );
     answer = {
       text: conversationalText,
-      grounding: 'SUPPORTED',
-      confidence: 1.0,
+      grounding: null,
+      confidence: null,
       citations: [],
       provider: 'local',
       model: 'intent-router',
@@ -192,6 +201,7 @@ export async function ask(input: AskInput): Promise<AskOutput> {
       },
     };
   } else if (routeRes.route === 'GENERAL_KNOWLEDGE') {
+    const modelSettings = await getModelSettings();
     answer = await generateGeneralAnswer({
       question: routeRes.cleanQuestion || input.question,
       history,
@@ -199,6 +209,7 @@ export async function ask(input: AskInput): Promise<AskOutput> {
       traceId,
     });
   } else if (routeRes.route === 'LIVE_EXTERNAL') {
+    const modelSettings = await getModelSettings();
     answer = await generateLiveAnswer({
       question: routeRes.cleanQuestion || input.question,
       history,
@@ -208,10 +219,32 @@ export async function ask(input: AskInput): Promise<AskOutput> {
     });
   } else {
     // Governed RAG: ORGANIZATIONAL_KNOWLEDGE or FOLLOW_UP_ORGANIZATIONAL
+    const [settings, modelSettings] = await Promise.all([
+      getRetrievalSettings(),
+      getModelSettings(),
+    ]);
+
+    // Authorize knowledge base against current workspace context
+    const wsContext = await getCurrentWorkspaceContext().catch(() => null);
+    let targetKbId = input.knowledgeBaseId ?? null;
+
+    if (targetKbId && wsContext) {
+      const authorizedKb = await prisma.knowledgeBase.findFirst({
+        where: { id: targetKbId, workspaceId: wsContext.id },
+      });
+      if (!authorizedKb) {
+        log.warn('Knowledge base not authorized for current workspace context', {
+          requestedKbId: targetKbId,
+          workspaceId: wsContext.id,
+        });
+        targetKbId = null;
+      }
+    }
+
     retrieval = await retrieve({
       question: routeRes.cleanQuestion || input.question,
       role: input.role,
-      knowledgeBaseId: input.knowledgeBaseId ?? null,
+      knowledgeBaseId: targetKbId,
       history,
       settings,
       traceId,
@@ -255,7 +288,7 @@ export async function ask(input: AskInput): Promise<AskOutput> {
     },
   });
 
-  // --- Retrieval Log Persistence -------------------------------------------
+  // --- Retrieval Log Persistence (Only when retrieval ran) ------------------
   if (retrieval) {
     await prisma.retrievalLog.create({
       data: {
@@ -317,18 +350,8 @@ export async function ask(input: AskInput): Promise<AskOutput> {
 
   // --- Async Non-Blocking CRM & Outbox Enrichment ----------------------------
   try {
-    let workspaceId: string | null = null;
-    if (input.knowledgeBaseId) {
-      const kb = await prisma.knowledgeBase.findUnique({
-        where: { id: input.knowledgeBaseId },
-        select: { workspaceId: true },
-      });
-      workspaceId = kb?.workspaceId ?? null;
-    }
-    if (!workspaceId) {
-      const ws = await getCurrentWorkspaceContext().catch(() => null);
-      workspaceId = ws?.id ?? null;
-    }
+    const wsContext = await getCurrentWorkspaceContext().catch(() => null);
+    const workspaceId = wsContext?.id ?? null;
 
     if (workspaceId) {
       const emailMatch = input.question.match(/([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})/);
@@ -363,12 +386,8 @@ export async function ask(input: AskInput): Promise<AskOutput> {
         payload: {
           contactId: contact.id,
           conversationId,
-          messageId: assistantMessage.id,
-          messages: [
-            ...history,
-            { role: 'user', content: input.question },
-            { role: 'assistant', content: answer.text },
-          ],
+          userMessageId: userMessage.id,
+          assistantMessageId: assistantMessage.id,
         },
       });
 
@@ -397,7 +416,7 @@ export async function ask(input: AskInput): Promise<AskOutput> {
           })),
         },
         answer: {
-          grounding: answer.grounding,
+          grounding: answer.grounding ?? 'UNSUPPORTED',
           text: answer.text,
           escalationSuggested: answer.escalationSuggested,
         },
@@ -418,141 +437,30 @@ export async function ask(input: AskInput): Promise<AskOutput> {
     escalationId,
     route: routeRes.route,
     sourceType: answer.sourceType ?? 'APPROVED_KNOWLEDGE',
-    retrieval: {
-      vectorCandidates: retrieval?.stats.vectorCandidates ?? 0,
-      keywordCandidates: retrieval?.stats.keywordCandidates ?? 0,
-      fusedCandidates: retrieval?.stats.fusedCandidates ?? 0,
-      afterAccessFilter: retrieval?.stats.afterAccessFilter ?? 0,
-      rerankedCount: retrieval?.stats.rerankedCount ?? 0,
-      hybrid: retrieval?.stats.hybrid ?? false,
-      droppedByPostFilter: retrieval?.stats.droppedByPostFilter ?? 0,
-      latencyMs: retrieval?.stats.latencyMs ?? 0,
-      allowedLevels: retrieval?.allowedLevels ?? [],
-    },
+    retrieval: retrieval
+      ? {
+          vectorCandidates: retrieval.stats.vectorCandidates,
+          keywordCandidates: retrieval.stats.keywordCandidates,
+          fusedCandidates: retrieval.stats.fusedCandidates,
+          afterAccessFilter: retrieval.stats.afterAccessFilter,
+          rerankedCount: retrieval.stats.rerankedCount,
+          hybrid: retrieval.stats.hybrid,
+          droppedByPostFilter: retrieval.stats.droppedByPostFilter,
+          latencyMs: retrieval.stats.latencyMs,
+          allowedLevels: retrieval.allowedLevels,
+        }
+      : {
+          vectorCandidates: 0,
+          keywordCandidates: 0,
+          fusedCandidates: 0,
+          afterAccessFilter: 0,
+          rerankedCount: 0,
+          hybrid: false,
+          droppedByPostFilter: 0,
+          latencyMs: 0,
+          allowedLevels: [],
+        },
   };
-}
-
-/**
- * Tracks knowledge gaps from low-confidence or unsupported answers.
- */
-export async function trackKnowledgeGap(params: {
-  question: string;
-  role: Role;
-  knowledgeBaseId: string | null;
-  retrieval: {
-    confidence: number;
-    grounding: string;
-    chunks: Array<{ documentId: string; documentTitle: string; content: string }>;
-  };
-  answer: {
-    grounding: string;
-    text: string;
-    escalationSuggested: boolean;
-  };
-}): Promise<void> {
-  const { question, knowledgeBaseId, answer } = params;
-
-  if (answer.grounding !== 'UNSUPPORTED' && !answer.escalationSuggested) {
-    return;
-  }
-
-  let kbId = knowledgeBaseId;
-  if (!kbId) {
-    const defaultKb = await prisma.knowledgeBase.findFirst({ select: { id: true } });
-    if (!defaultKb) return;
-    kbId = defaultKb.id;
-  }
-
-  const normalizedQuestion = question.trim().toLowerCase();
-
-  const existingGap = await prisma.knowledgeGap.findFirst({
-    where: {
-      knowledgeBaseId: kbId,
-      status: { in: ['OPEN', 'ACKNOWLEDGED'] },
-    },
-    orderBy: { lastOccurredAt: 'desc' },
-  });
-
-  const similarGap = existingGap ? await findSimilarGap(normalizedQuestion, kbId) : null;
-
-  if (similarGap) {
-    await prisma.knowledgeGap.update({
-      where: { id: similarGap.id },
-      data: {
-        occurrenceCount: { increment: 1 },
-        lastOccurredAt: new Date(),
-      },
-    });
-  } else {
-    await prisma.knowledgeGap.create({
-      data: {
-        knowledgeBaseId: kbId,
-        title: `Knowledge gap: ${question.slice(0, 80)}${question.length > 80 ? '...' : ''}`,
-        description: `Users repeatedly ask about this topic but approved knowledge is insufficient. Grounding: ${answer.grounding}`,
-        status: 'OPEN',
-        occurrenceCount: 1,
-      },
-    });
-  }
-}
-
-async function findSimilarGap(
-  normalizedQuestion: string,
-  knowledgeBaseId: string,
-): Promise<{ id: string } | null> {
-  const gaps = await prisma.knowledgeGap.findMany({
-    where: { knowledgeBaseId, status: { in: ['OPEN', 'ACKNOWLEDGED'] } },
-    select: { id: true, title: true },
-  });
-
-  const questionWords = new Set(normalizedQuestion.split(/\s+/).filter((w) => w.length > 3));
-
-  for (const gap of gaps) {
-    const gapWords = new Set(
-      gap.title
-        .toLowerCase()
-        .replace(/[^a-z0-9\s]/g, '')
-        .split(/\s+/)
-        .filter((w) => w.length > 3),
-    );
-
-    const intersection = [...questionWords].filter((w) => gapWords.has(w));
-    const union = new Set([...questionWords, ...gapWords]);
-
-    if (union.size > 0 && intersection.length / union.size > 0.4) {
-      return { id: gap.id };
-    }
-  }
-
-  return null;
-}
-
-/** Compact conversation summary attached to an escalation for the human handler. */
-export function buildConversationSummary(
-  history: ConversationTurn[],
-  question: string,
-  answer: AnswerResult,
-): string {
-  const previousQuestions = history
-    .filter((turn) => turn.role === 'USER')
-    .slice(-3)
-    .map((turn) => `- ${turn.content.slice(0, 160)}`);
-
-  const parts: string[] = [];
-  if (previousQuestions.length > 0) {
-    parts.push(`Earlier in this conversation:\n${previousQuestions.join('\n')}`);
-  }
-  parts.push(`Current question:\n${question}`);
-  parts.push(
-    `Assistant outcome: ${answer.grounding} at ${(answer.confidence * 100).toFixed(0)}% confidence.`,
-  );
-  if (answer.citations.length > 0) {
-    const sources = [...new Set(answer.citations.map((c) => c.documentTitle))];
-    parts.push(`Sources retrieved: ${sources.join(', ')}.`);
-  } else {
-    parts.push('No approved source supported an answer.');
-  }
-  return parts.join('\n\n');
 }
 
 /** Marks a message helpful or otherwise, and escalates on negative feedback. */

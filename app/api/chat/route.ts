@@ -130,9 +130,9 @@ export async function POST(request: Request) {
           latencyMs: result.retrieval.latencyMs,
         },
         confidence: {
-          value: result.answer.confidence,
+          value: result.answer.confidence ?? 1.0,
           label: result.answer.evidence.confidenceLabel,
-          topScore: Number(result.answer.confidence.toFixed(4)),
+          topScore: Number((result.answer.confidence ?? 1.0).toFixed(4)),
           coverage: result.answer.evidence.coverage,
           agreement:
             result.answer.evidence.supportingPassages > 0

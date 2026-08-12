@@ -6,6 +6,7 @@ import type {
   LeadStatus,
 } from '@prisma/client';
 import { prisma } from '@/lib/database/client';
+import { getCurrentWorkspaceContext } from '@/lib/workspace/context';
 
 export interface ResolveIdentityInput {
   workspaceId: string;
@@ -61,9 +62,9 @@ export async function resolveIdentity(input: ResolveIdentityInput): Promise<Cont
   } = input;
 
   let workspaceId = inputWorkspaceId;
-  const dbWs = await prisma.workspace.findFirst().catch(() => null);
-  if (dbWs) {
-    workspaceId = dbWs.id;
+  if (!workspaceId) {
+    const wsContext = await getCurrentWorkspaceContext();
+    workspaceId = wsContext.id;
   }
 
   // 1. Match by Email if provided

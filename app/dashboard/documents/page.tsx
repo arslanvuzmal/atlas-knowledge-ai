@@ -8,7 +8,6 @@ import { getSession } from '@/lib/auth/session';
 import { allowedAccessLevels, hasPermission } from '@/lib/auth/rbac';
 import { prisma } from '@/lib/database/client';
 import { formatBytes, formatNumber, formatRelative } from '@/lib/ui';
-import { ensureDemoDataSeeded } from '@/lib/database/auto-seed';
 
 export const metadata: Metadata = { title: 'Documents' };
 export const dynamic = 'force-dynamic';
@@ -28,44 +27,6 @@ export default async function DocumentsPage({
   const session = await getSession();
   if (!hasPermission(session.role, 'document:read')) {
     return <AccessDenied area="the document library" />;
-  }
-
-  await ensureDemoDataSeeded();
-
-  // Ensure Damaged Upload Example.pdf with status FAILED and lastError exists for all roles
-  try {
-    const damagedDoc = await prisma.document.findFirst({
-      where: { title: { contains: 'Damaged Upload', mode: 'insensitive' } },
-    });
-
-    if (!damagedDoc) {
-      const primaryKb = await prisma.knowledgeBase.findFirst({ orderBy: { createdAt: 'asc' } });
-      if (primaryKb) {
-        await prisma.document.create({
-          data: {
-            knowledgeBaseId: primaryKb.id,
-            title: 'Damaged Upload Example.pdf',
-            sourceType: 'PDF',
-            accessLevel: 'PUBLIC',
-            checksum: `damaged-upload-${primaryKb.id}-${Math.random().toString(36).substring(2, 9)}`,
-            status: 'FAILED',
-            lastError: 'Document could not be parsed: damaged upload header corrupted.',
-            chunkCount: 0,
-          },
-        });
-      }
-    } else if (damagedDoc.status !== 'FAILED' || !damagedDoc.lastError) {
-      await prisma.document.update({
-        where: { id: damagedDoc.id },
-        data: {
-          status: 'FAILED',
-          accessLevel: 'PUBLIC',
-          lastError: 'Document could not be parsed: damaged upload header corrupted.',
-        },
-      });
-    }
-  } catch (err) {
-    console.error('Damaged doc seeding failed:', err);
   }
 
   const params = await searchParams;

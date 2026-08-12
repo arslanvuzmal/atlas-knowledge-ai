@@ -22,9 +22,15 @@ import { fitToDimensions } from '@/lib/embeddings/types';
 let cachedProvider: EmbeddingProvider | null = null;
 let cachedKey = '';
 
-// Bounded LRU Cache for query embeddings (max 500 queries)
-const queryEmbeddingCache = new Map<string, number[]>();
+interface CacheEntry {
+  vector: number[];
+  timestamp: number;
+}
+
+// Bounded LRU + TTL Cache for query embeddings (max 500 queries, 20-min TTL)
+const queryEmbeddingCache = new Map<string, CacheEntry>();
 const MAX_QUERY_CACHE_SIZE = 500;
+const CACHE_TTL_MS = 20 * 60 * 1000;
 
 export function getEmbeddingProvider(): EmbeddingProvider {
   const config = env();
@@ -114,8 +120,17 @@ export async function embedQuery(text: string, signal?: AbortSignal): Promise<nu
   const targetDimensions = env().EMBEDDING_DIMENSIONS;
   const cacheKey = `${provider.name}:${provider.model}:${targetDimensions}:${text.trim().toLowerCase()}`;
 
-  if (queryEmbeddingCache.has(cacheKey)) {
-    return queryEmbeddingCache.get(cacheKey)!;
+  const cached = queryEmbeddingCache.get(cacheKey);
+  const now = Date.now();
+
+  if (cached) {
+    if (now - cached.timestamp <= CACHE_TTL_MS) {
+      // LRU refresh recency: re-insert entry
+      queryEmbeddingCache.delete(cacheKey);
+      queryEmbeddingCache.set(cacheKey, { vector: cached.vector, timestamp: now });
+      return cached.vector;
+    }
+    queryEmbeddingCache.delete(cacheKey);
   }
 
   const result = await embedTexts([text], signal);
@@ -125,8 +140,8 @@ export async function embedQuery(text: string, signal?: AbortSignal): Promise<nu
     const firstKey = queryEmbeddingCache.keys().next().value;
     if (firstKey) queryEmbeddingCache.delete(firstKey);
   }
-  queryEmbeddingCache.set(cacheKey, vector);
 
+  queryEmbeddingCache.set(cacheKey, { vector, timestamp: now });
   return vector;
 }
 

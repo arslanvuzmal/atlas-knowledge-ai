@@ -39,8 +39,8 @@ type ClassificationResult =
 type CaseResult = {
   testCaseId: string;
   classification: ClassificationResult;
-  confidence: number;
-  grounding: 'SUPPORTED' | 'PARTIALLY_SUPPORTED' | 'UNSUPPORTED';
+  confidence: number | null;
+  grounding: 'SUPPORTED' | 'PARTIALLY_SUPPORTED' | 'UNSUPPORTED' | null;
   citations: number;
   latencyMs: number;
   retrievedDocuments: string[];
@@ -60,8 +60,8 @@ function classifyResult(
   testCase: TestCase,
   answer: {
     text: string;
-    grounding: 'SUPPORTED' | 'PARTIALLY_SUPPORTED' | 'UNSUPPORTED';
-    confidence: number;
+    grounding: 'SUPPORTED' | 'PARTIALLY_SUPPORTED' | 'UNSUPPORTED' | null;
+    confidence: number | null;
     citations: Array<{ chunkId: string }>;
     escalationSuggested: boolean;
     diagnostics: { invalidCitationMarkers: number[] };
@@ -159,7 +159,7 @@ function classifyResult(
       };
     }
     // Check minimum confidence
-    if (testCase.minimumConfidence && answer.confidence < testCase.minimumConfidence) {
+    if (testCase.minimumConfidence && (answer.confidence ?? 0) < testCase.minimumConfidence) {
       return {
         testCaseId: testCase.id,
         classification: 'GROUNDING_FAILURE',
@@ -292,7 +292,7 @@ function classifyResult(
   }
 
   // Check minimum confidence
-  if (testCase.minimumConfidence && answer.confidence < testCase.minimumConfidence) {
+  if (testCase.minimumConfidence && (answer.confidence ?? 0) < testCase.minimumConfidence) {
     return {
       testCaseId: testCase.id,
       classification: 'GROUNDING_FAILURE',

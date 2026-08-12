@@ -28,6 +28,12 @@ export interface AnswerRequest {
   traceId?: string;
 }
 
+export interface ExternalSource {
+  title: string;
+  domain: string;
+  uri: string;
+}
+
 export interface EvidencePacket {
   /** Plain-language description of evidence strength. */
   confidenceLabel:
@@ -46,9 +52,10 @@ export interface EvidencePacket {
 
 export interface AnswerResult {
   text: string;
-  grounding: GroundingLevel;
-  confidence: number;
+  grounding: GroundingLevel | null;
+  confidence: number | null;
   citations: ValidatedCitation[];
+  externalSources?: ExternalSource[];
   provider: string;
   model: string;
   latencyMs: number;
@@ -98,24 +105,14 @@ function unsupportedAnswer(
   role: Role,
 ): { text: string; related: { documentId: string; title: string; sectionTitle: string | null }[] } {
   const related = suggestRelatedSources(retrieval.chunks, role, 3);
-
-  let text = UNSUPPORTED_ANSWER;
-  if (related.length > 0) {
-    const titles = related.map((source) => source.title);
-    const unique = [...new Set(titles)];
-    text += `\n\nThe closest approved material covers ${unique.join(', ')}, but it does not address your question directly.`;
-  }
-  if (retrieval.confidence.uncoveredTerms.length > 0) {
-    text += `\n\nI found nothing about: ${retrieval.confidence.uncoveredTerms.slice(0, 5).join(', ')}.`;
-  }
-  text +=
-    '\n\nYou can rephrase the question with a more specific term, or ask for a human to review it.';
-
-  return { text, related };
+  return {
+    text: UNSUPPORTED_ANSWER,
+    related,
+  };
 }
 
 /**
- * General Knowledge generation path (bypasses RAG).
+ * General Knowledge Generation Path (bypasses RAG retrieval).
  */
 export async function generateGeneralAnswer(request: {
   question: string;
@@ -127,15 +124,12 @@ export async function generateGeneralAnswer(request: {
   const provider = getLlmProvider(request.modelSettings.llmProviderOverride);
 
   const system =
-    'You are Atlas, a helpful general-purpose assistant integrated with a governed enterprise knowledge platform.\n' +
-    'Answer ordinary general-knowledge and conversational questions naturally, clearly and concisely.\n' +
-    "Do not pretend general knowledge came from the organization's approved knowledge base.\n" +
-    'Do not fabricate Atlas citations.\n' +
-    "If a question asks about this organization's policies, pricing, products, security, employees, internal processes or approved documents, the application will route it through governed RAG instead.\n" +
-    'If information is likely to be current or time-sensitive, do not guess; the application will route it to a live-information tool.';
+    'You are Atlas, a general intelligence assistant.\n' +
+    'Answer general knowledge questions accurately, clearly, and concisely.\n' +
+    'Do not invent proprietary company policies or document citations.';
 
   const messages: ChatMessage[] = [
-    ...buildHistoryMessages(request.history, 6),
+    ...buildHistoryMessages(request.history, 4),
     { role: 'user', content: request.question },
   ];
 
@@ -149,8 +143,8 @@ export async function generateGeneralAnswer(request: {
 
     return {
       text: generation.text,
-      grounding: 'SUPPORTED',
-      confidence: 1.0,
+      grounding: null,
+      confidence: null,
       citations: [],
       provider: provider.name,
       model: provider.model,
@@ -180,8 +174,8 @@ export async function generateGeneralAnswer(request: {
     logger.error('General answer generation failed', { provider: provider.name, error });
     return {
       text: publicMessageForLlmError(error),
-      grounding: 'UNSUPPORTED',
-      confidence: 0,
+      grounding: null,
+      confidence: null,
       citations: [],
       provider: provider.name,
       model: provider.model,
@@ -225,8 +219,8 @@ export async function generateLiveAnswer(request: {
   if (request.missingLocation) {
     return {
       text: 'Sure — which city or location?',
-      grounding: 'SUPPORTED',
-      confidence: 1.0,
+      grounding: null,
+      confidence: null,
       citations: [],
       provider: 'local',
       model: 'intent-router',
@@ -267,11 +261,7 @@ export async function generateLiveAnswer(request: {
   ];
 
   try {
-    const generation = await (
-      provider as unknown as {
-        generate: (req: Record<string, unknown>) => Promise<{ text: string; latencyMs: number }>;
-      }
-    ).generate({
+    const generation = await provider.generate({
       system,
       messages,
       maxTokens: request.modelSettings.maxAnswerTokens,
@@ -281,9 +271,10 @@ export async function generateLiveAnswer(request: {
 
     return {
       text: generation.text,
-      grounding: 'SUPPORTED',
-      confidence: 1.0,
+      grounding: null,
+      confidence: null,
       citations: [],
+      externalSources: generation.sources ?? [],
       provider: provider.name,
       model: provider.model,
       latencyMs: generation.latencyMs,
@@ -312,8 +303,8 @@ export async function generateLiveAnswer(request: {
     logger.error('Live answer generation failed', { provider: provider.name, error });
     return {
       text: publicMessageForLlmError(error),
-      grounding: 'UNSUPPORTED',
-      confidence: 0,
+      grounding: null,
+      confidence: null,
       citations: [],
       provider: provider.name,
       model: provider.model,
@@ -377,12 +368,18 @@ export async function generateAnswer(request: AnswerRequest): Promise<AnswerResu
     };
   }
 
-  // --- 2. Prompt assembly ----------------------------------------------------
-  const prompt: BuiltPrompt = buildPrompt(request.question, retrieval.chunks);
   const provider = getLlmProvider(modelSettings.llmProviderOverride);
 
+  // --- 2. Build prompt from retrieved context --------------------------------
+  const prompt: BuiltPrompt = buildPrompt({
+    question: request.question,
+    chunks: retrieval.chunks,
+    history: buildHistoryMessages(request.history, 4),
+    maxTokens: modelSettings.maxAnswerTokens,
+  });
+
   const messages: ChatMessage[] = [
-    ...buildHistoryMessages(request.history, settings.conversationHistoryLength),
+    ...prompt.history,
     { role: 'user', content: prompt.userContent },
   ];
 

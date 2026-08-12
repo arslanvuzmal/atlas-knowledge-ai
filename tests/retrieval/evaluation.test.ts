@@ -150,8 +150,8 @@ interface CaseResult {
   id: string;
   kind: string;
   retrievedDocuments: string[];
-  confidence: number;
-  grounding: string;
+  confidence: number | null;
+  grounding: string | null;
   latencyMs: number;
   citationCount: number;
   passed: boolean;
@@ -169,7 +169,7 @@ afterAll(async () => {
     results.reduce((sum, result) => sum + result.latencyMs, 0) / Math.max(1, total),
   );
   const meanConfidence =
-    results.reduce((sum, result) => sum + result.confidence, 0) / Math.max(1, total);
+    results.reduce((sum, result) => sum + (result.confidence ?? 0), 0) / Math.max(1, total);
 
   console.log('\n=== DEMO EVALUATION RESULTS (fictional Northstar Cloud corpus) ===');
   console.log(`cases            : ${total}`);
@@ -340,7 +340,7 @@ describe('retrieval evaluation', () => {
 
     const isDemo = answer.isDemo;
 
-    if (isDemo || answer.confidence < settings.confidenceThreshold) {
+    if (isDemo || (answer.confidence ?? 0) < settings.confidenceThreshold) {
       // Under demo mode or low confidence, hedging or refusing is expected and honest.
       expect(answer.grounding).not.toBe('SUPPORTED');
     } else {

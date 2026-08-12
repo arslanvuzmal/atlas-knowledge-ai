@@ -1,6 +1,7 @@
 import type { RerankedChunk } from '@/lib/reranking';
 import { neutraliseUntrustedText } from '@/lib/security/prompt-injection';
 import { estimateTokenCount } from '@/lib/retrieval/text';
+import type { ChatMessage } from '@/lib/ai/types';
 
 /**
  * Prompt construction.
@@ -50,23 +51,44 @@ export interface PromptSource {
 export interface BuiltPrompt {
   system: string;
   userContent: string;
+  history: ChatMessage[];
   sources: PromptSource[];
   estimatedTokens: number;
   truncatedSources: number;
 }
 
+export interface BuildPromptInput {
+  question: string;
+  chunks: RerankedChunk[];
+  history?: ChatMessage[];
+  maxTokens?: number;
+  maxContextTokens?: number;
+}
+
 /**
  * Assembles the context block within a token budget.
- *
- * Sources are added in rank order and stop when the budget is reached, so the
- * strongest evidence is never the part that gets dropped.
+ * Supports positional parameters (question, chunks, options) or options object.
  */
 export function buildPrompt(
-  question: string,
-  chunks: RerankedChunk[],
-  options: { maxContextTokens?: number } = {},
+  inputOrQuestion: string | BuildPromptInput,
+  chunksArg?: RerankedChunk[],
+  optionsArg: { maxContextTokens?: number } = {},
 ): BuiltPrompt {
-  const maxContextTokens = options.maxContextTokens ?? 6000;
+  let question: string;
+  let chunks: RerankedChunk[];
+  let historyMessages: ChatMessage[] = [];
+  let maxContextTokens = 6000;
+
+  if (typeof inputOrQuestion === 'object' && inputOrQuestion !== null) {
+    question = inputOrQuestion.question;
+    chunks = inputOrQuestion.chunks ?? [];
+    historyMessages = inputOrQuestion.history ?? [];
+    maxContextTokens = inputOrQuestion.maxContextTokens ?? inputOrQuestion.maxTokens ?? 6000;
+  } else {
+    question = inputOrQuestion;
+    chunks = chunksArg ?? [];
+    maxContextTokens = optionsArg.maxContextTokens ?? 6000;
+  }
 
   const sources: PromptSource[] = [];
   let usedTokens = 0;
@@ -109,6 +131,7 @@ export function buildPrompt(
   return {
     system: SYSTEM_PROMPT,
     userContent,
+    history: historyMessages,
     sources,
     estimatedTokens: usedTokens + estimateTokenCount(question),
     truncatedSources,

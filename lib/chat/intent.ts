@@ -87,6 +87,8 @@ const ORGANIZATIONAL_KEYWORDS = [
   'price',
   'cost',
   'plan',
+  'trial',
+  'free trial',
   'team plan',
   'enterprise plan',
   'subscription',
@@ -297,7 +299,7 @@ export function routeMessage(question: string, history: ConversationTurn[] = [])
     GENERAL_KNOWLEDGE_PATTERNS.some((p) => p.test(cleanNormalized)) ||
     (!hasOrgKeyword &&
       /^(what|who|why|where|how|explain)\b/i.test(cleanNormalized) &&
-      !/\b(our|company|workspace|handbook|policy|pricing)\b/i.test(cleanNormalized));
+      !/\b(our|company|workspace|handbook|policy|pricing|trial)\b/i.test(cleanNormalized));
 
   if (isGeneralKnowledge) {
     return {

@@ -53,26 +53,30 @@ export async function ensureDemoDataSeeded(): Promise<{
       });
 
       if (!exists) {
-        await prisma.document.create({
-          data: {
-            knowledgeBaseId: targetKb.id,
-            title: 'Damaged Upload Example.pdf',
-            sourceType: 'PDF',
-            accessLevel: 'EMPLOYEE',
-            checksum: `auto-prod-damaged-${targetKb.id.slice(-8)}`,
-            status: 'FAILED',
-            lastError: 'Document could not be parsed: damaged upload header corrupted.',
-            chunkCount: 0,
-          },
-        }).catch(() => {});
+        await prisma.document
+          .create({
+            data: {
+              knowledgeBaseId: targetKb.id,
+              title: 'Damaged Upload Example.pdf',
+              sourceType: 'PDF',
+              accessLevel: 'EMPLOYEE',
+              checksum: `auto-prod-damaged-${targetKb.id.slice(-8)}`,
+              status: 'FAILED',
+              lastError: 'Document could not be parsed: damaged upload header corrupted.',
+              chunkCount: 0,
+            },
+          })
+          .catch(() => {});
       } else {
-        await prisma.document.update({
-          where: { id: exists.id },
-          data: {
-            status: 'FAILED',
-            lastError: 'Document could not be parsed: damaged upload header corrupted.',
-          },
-        }).catch(() => {});
+        await prisma.document
+          .update({
+            where: { id: exists.id },
+            data: {
+              status: 'FAILED',
+              lastError: 'Document could not be parsed: damaged upload header corrupted.',
+            },
+          })
+          .catch(() => {});
       }
     }
   } catch {

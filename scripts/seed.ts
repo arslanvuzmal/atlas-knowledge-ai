@@ -680,19 +680,21 @@ async function seedDocuments(knowledgeBaseId: string, adminUserId: string): Prom
     );
   }
 
-  await prisma.document.create({
-    data: {
-      knowledgeBaseId,
-      title: 'Damaged Upload Example.pdf',
-      sourceType: 'PDF',
-      accessLevel: 'EMPLOYEE',
-      checksum: 'damaged-upload-seed-07',
-      status: 'FAILED',
-      lastError: 'Document could not be parsed: damaged upload header corrupted.',
-      chunkCount: 0,
-      uploadedBy: adminUserId,
-    },
-  }).catch(() => {});
+  await prisma.document
+    .create({
+      data: {
+        knowledgeBaseId,
+        title: 'Damaged Upload Example.pdf',
+        sourceType: 'PDF',
+        accessLevel: 'EMPLOYEE',
+        checksum: 'damaged-upload-seed-07',
+        status: 'FAILED',
+        lastError: 'Document could not be parsed: damaged upload header corrupted.',
+        chunkCount: 0,
+        uploadedBy: adminUserId,
+      },
+    })
+    .catch(() => {});
 }
 
 async function seedConversations(
