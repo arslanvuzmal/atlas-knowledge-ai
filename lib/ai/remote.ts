@@ -263,7 +263,7 @@ export class GeminiLlmProvider extends BaseRemoteProvider {
 
   constructor(private readonly config: ProviderConfig) {
     super();
-    this.model = config.model || 'gemini-2.5-flash';
+    this.model = config.model || process.env.LLM_MODEL || 'gemini-3.6-flash';
   }
 
   private getClient(): GoogleGenAI {
@@ -316,12 +316,42 @@ export class GeminiLlmProvider extends BaseRemoteProvider {
       );
 
       const text = response.text ?? '';
+
+      // Extract real web sources from Google Grounding Metadata
+      const sources: Array<{ title: string; domain: string; uri: string }> = [];
+      const candidate = response.candidates?.[0];
+      const groundingMetadata = (
+        candidate as unknown as {
+          groundingMetadata?: {
+            groundingChunks?: Array<{ web?: { uri?: string; title?: string } }>;
+          };
+        }
+      )?.groundingMetadata;
+
+      if (groundingMetadata?.groundingChunks) {
+        for (const chunk of groundingMetadata.groundingChunks) {
+          if (chunk.web?.uri) {
+            try {
+              const url = new URL(chunk.web.uri);
+              const domain = url.hostname.replace(/^www\./, '');
+              const title = chunk.web.title?.trim() || domain;
+              if (!sources.some((s) => s.uri === chunk.web!.uri)) {
+                sources.push({ title, domain, uri: chunk.web.uri });
+              }
+            } catch {
+              // Ignore invalid URLs
+            }
+          }
+        }
+      }
+
       return {
         text: requireText(text, 'Gemini'),
         provider: this.name,
         model: this.model,
         latencyMs: Date.now() - started,
         isDemo: false,
+        sources: sources.length > 0 ? sources : undefined,
         usage: {
           inputTokens: response.usageMetadata?.promptTokenCount,
           outputTokens: response.usageMetadata?.candidatesTokenCount,

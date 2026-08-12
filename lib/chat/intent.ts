@@ -1,4 +1,5 @@
 import type { ConversationTurn } from '@/lib/retrieval/query';
+import { detectPromptInjection } from '@/lib/security/prompt-injection';
 
 export type ChatRoute =
   | 'LOCAL_CONVERSATION'
@@ -80,69 +81,27 @@ const LIVE_EXTERNAL_PATTERNS = [
   /\bcurrent\s+usd\b/i,
 ];
 
-const ORGANIZATIONAL_KEYWORDS = [
-  'policy',
-  'refund',
-  'pricing',
-  'price',
-  'cost',
-  'plan',
-  'trial',
-  'free trial',
-  'team plan',
-  'enterprise plan',
-  'subscription',
-  'annual',
-  'monthly',
-  'leave',
-  'vacation',
-  'soc 2',
-  'hipaa',
-  'security controls',
-  'security',
-  'encryption',
-  'data at rest',
-  'data in transit',
-  'aes-256',
-  'tls 1.3',
-  'incident',
-  'sev 1',
-  'sev 2',
-  'handbook',
-  'northstar',
-  'atlas',
-  'compliance',
-  'on-call',
-  'oncall',
-  'document',
-  'auth',
-  'authentication',
-  'authorization',
-  'sso',
-  'saml',
-  'mfa',
-  '2fa',
-  'audit',
-  'backup',
-  'retention',
-  'sla',
-  'uptime',
-  'availability',
-  'our company',
-  'our product',
-  'our security',
-  'our pricing',
-  'our refund',
-  'our leave',
+const UNSAFE_PATTERNS = [
+  /\b(ignore|override|bypass|disregard)\b.*\b(authorization|permission|access|security|manager|role|instruction)s?\b/i,
+  /\b(set|grant|make)\b.*\b(admin|manager|superuser|root)\b/i,
+  /\bshow\s+manager\s+docs\b/i,
 ];
 
-const GENERAL_KNOWLEDGE_PATTERNS = [
-  /^what\s+is\s+(machine\s+learning|photosynthesis|compound\s+interest|ai|quantum\s+computing|blockchain|dna|gravity|black\s+hole|inflation)\b/i,
-  /^who\s+(invented|created|wrote|discovered)\s+(python|javascript|linux|the\s+telephone|penicillin|relativity)\b/i,
-  /^explain\s+(compound\s+interest|newton'?s|photosynthesis|machine\s+learning|relativity|quantum)\b/i,
-  /^what\s+is\s+the\s+capital\s+of\b/i,
-  /^give\s+me\s+\d+\s+ideas\b/i,
-  /^how\s+does\s+(photosynthesis|gravity|a\s+car\s+engine)\s+work\b/i,
+const STRICT_ORGANIZATIONAL_PATTERNS = [
+  /\b(our|we|northstar|atlas)\b/i,
+  /\b(refund\s+policy|refund\s+window|employee\s+handbook|handbook|team\s+plan|starter\s+plan|enterprise\s+plan|support\s+faq|support\s+response|incident\s+response|security\s+overview|sales\s+enablement|product\s+manual)\b/i,
+  /\b(refund|refunds|pricing|subscription|trial|free\s+trial|sla|on-call|oncall)\b/i,
+  /\b(do\s+you|can\s+you|does\s+atlas|does\s+northstar|what\s+services|what\s+products|insurance)\b/i,
+  /\bencryption\s+is\s+used\b/i,
+  /\bdata\s+at\s+rest\b/i,
+];
+
+const AMBIGUOUS_REFERENTIAL_PATTERNS = [
+  /^(does|will|can)\s+(that|this|it)\b/i,
+  /^what\s+about\s+(that|this|it)\b/i,
+  /^how\s+about\s+(that|this|it)\b/i,
+  /^and\s+for\s+(that|this|it)\b/i,
+  /^apply\s+to\s+(that|this|it)\b/i,
 ];
 
 function normalize(text: string): string {
@@ -161,7 +120,27 @@ export function routeMessage(question: string, history: ConversationTurn[] = [])
   const cleanQuestion = stripSocialPrefix(question);
   const cleanNormalized = normalize(cleanQuestion);
 
-  // 1. Human Operator / Escalation Request
+  // 1. Security / Prompt Injection Override Check -> UNSAFE Route
+  const injection = detectPromptInjection(question);
+  const matchesUnsafePattern = UNSAFE_PATTERNS.some((p) => p.test(cleanNormalized));
+
+  if (
+    matchesUnsafePattern ||
+    (injection.risk === 'high' && injection.signals.some((s) => s.weight >= 0.8))
+  ) {
+    return {
+      route: 'UNSAFE',
+      confidence: 0.99,
+      reason: 'High-risk security instruction override detected',
+      requiresRag: false,
+      requiresGemini: false,
+      requiresLiveTool: false,
+      requiresHistory: false,
+      cleanQuestion,
+    };
+  }
+
+  // 2. Human Operator / Escalation Request
   if (HUMAN_REQUEST_PATTERNS.some((p) => p.test(rawNormalized))) {
     return {
       route: 'HUMAN_REQUEST',
@@ -175,7 +154,7 @@ export function routeMessage(question: string, history: ConversationTurn[] = [])
     };
   }
 
-  // 2. Social / Local Fast Path
+  // 3. Social / Local Fast Path
   if (cleanNormalized.length === 0) {
     return {
       route: 'LOCAL_CONVERSATION',
@@ -212,25 +191,31 @@ export function routeMessage(question: string, history: ConversationTurn[] = [])
     };
   }
 
-  // 3. Organizational RAG Query Check
-  const hasOrgKeyword = ORGANIZATIONAL_KEYWORDS.some((kw) => cleanNormalized.includes(kw));
+  // 4. Ambiguous Context-Less Referential Check
+  if (history.length === 0 && AMBIGUOUS_REFERENTIAL_PATTERNS.some((p) => p.test(cleanNormalized))) {
+    return {
+      route: 'AMBIGUOUS',
+      confidence: 0.9,
+      reason: 'Referential request with insufficient conversation history',
+      requiresRag: false,
+      requiresGemini: false,
+      requiresLiveTool: false,
+      requiresHistory: true,
+      cleanQuestion,
+    };
+  }
 
-  // 4. Follow-up Check
+  // 5. Follow-up Check to previous organizational query
   if (history.length > 0) {
-    const recentTurns = history.filter((t) => t.role === 'USER').slice(-2);
-    if (recentTurns.length > 0) {
-      const lastQuestion = recentTurns[recentTurns.length - 1].content.toLowerCase();
-      const lastWasOrg = ORGANIZATIONAL_KEYWORDS.some((kw) => lastQuestion.includes(kw));
+    const recentUserTurns = history.filter((t) => t.role === 'USER').slice(-2);
+    if (recentUserTurns.length > 0) {
+      const lastQuestion = recentUserTurns[recentUserTurns.length - 1].content.toLowerCase();
+      const lastWasOrg = STRICT_ORGANIZATIONAL_PATTERNS.some((p) => p.test(lastQuestion));
+      const isReferentialFollowUp = AMBIGUOUS_REFERENTIAL_PATTERNS.some((p) =>
+        p.test(cleanNormalized),
+      );
 
-      const isReferentialFollowUp = [
-        /^does\s+(that|this)\b/i,
-        /^what\s+about\b/i,
-        /^how\s+about\b/i,
-        /^and\s+for\b/i,
-        /^apply\s+to\b/i,
-      ].some((p) => p.test(cleanNormalized));
-
-      if (lastWasOrg && (isReferentialFollowUp || (cleanNormalized.length < 35 && hasOrgKeyword))) {
+      if (lastWasOrg && isReferentialFollowUp) {
         return {
           route: 'FOLLOW_UP_ORGANIZATIONAL',
           confidence: 0.9,
@@ -245,20 +230,7 @@ export function routeMessage(question: string, history: ConversationTurn[] = [])
     }
   }
 
-  if (hasOrgKeyword) {
-    return {
-      route: 'ORGANIZATIONAL_KNOWLEDGE',
-      confidence: 0.92,
-      reason: 'Contains governed organizational keyword or policy reference',
-      requiresRag: true,
-      requiresGemini: true,
-      requiresLiveTool: false,
-      requiresHistory: false,
-      cleanQuestion,
-    };
-  }
-
-  // 5. Weather / Live External Information
+  // 6. Weather / Live External Information Check BEFORE Org Check
   const isWeather = WEATHER_PATTERNS.some((p) => p.test(cleanNormalized));
   if (isWeather) {
     const hasLocation =
@@ -270,7 +242,7 @@ export function routeMessage(question: string, history: ConversationTurn[] = [])
     return {
       route: 'LIVE_EXTERNAL',
       confidence: 0.95,
-      reason: isWeather ? 'Live weather query' : 'Live external information query',
+      reason: 'Live weather query',
       requiresRag: false,
       requiresGemini: hasLocation,
       requiresLiveTool: hasLocation,
@@ -294,19 +266,15 @@ export function routeMessage(question: string, history: ConversationTurn[] = [])
     };
   }
 
-  // 6. General Knowledge Query
-  const isGeneralKnowledge =
-    GENERAL_KNOWLEDGE_PATTERNS.some((p) => p.test(cleanNormalized)) ||
-    (!hasOrgKeyword &&
-      /^(what|who|why|where|how|explain)\b/i.test(cleanNormalized) &&
-      !/\b(our|company|workspace|handbook|policy|pricing|trial)\b/i.test(cleanNormalized));
+  // 7. Explicit Organizational RAG Query Check
+  const hasStrictOrgSignal = STRICT_ORGANIZATIONAL_PATTERNS.some((p) => p.test(cleanNormalized));
 
-  if (isGeneralKnowledge) {
+  if (hasStrictOrgSignal) {
     return {
-      route: 'GENERAL_KNOWLEDGE',
-      confidence: 0.88,
-      reason: 'General stable world knowledge query',
-      requiresRag: false,
+      route: 'ORGANIZATIONAL_KNOWLEDGE',
+      confidence: 0.92,
+      reason: 'Contains explicit organizational or policy reference',
+      requiresRag: true,
       requiresGemini: true,
       requiresLiveTool: false,
       requiresHistory: false,
@@ -314,12 +282,12 @@ export function routeMessage(question: string, history: ConversationTurn[] = [])
     };
   }
 
-  // 7. Default Fallback -> Governed RAG
+  // 8. Safe Default -> GENERAL_KNOWLEDGE
   return {
-    route: 'ORGANIZATIONAL_KNOWLEDGE',
-    confidence: 0.8,
-    reason: 'Defaulting unclassified business query to governed RAG',
-    requiresRag: true,
+    route: 'GENERAL_KNOWLEDGE',
+    confidence: 0.85,
+    reason: 'Unclassified question defaulting to general world knowledge',
+    requiresRag: false,
     requiresGemini: true,
     requiresLiveTool: false,
     requiresHistory: false,
@@ -370,6 +338,10 @@ export function getConversationalResponse(intent: ChatIntent | ChatRoute): strin
       return "I'm doing well, thank you! How can I assist you today?";
     case 'HUMAN_REQUEST':
       return "I'll connect you with a human operator. Someone will follow up with you shortly.";
+    case 'AMBIGUOUS':
+      return "Could you clarify what you're referring to?";
+    case 'UNSAFE':
+      return 'I cannot comply with system prompt extraction or security override instructions.';
     default:
       return 'Hi! How can I help you today?';
   }

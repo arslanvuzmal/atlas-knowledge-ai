@@ -24,6 +24,19 @@ export async function enqueueOutboxEvent(input: EnqueueOutboxInput) {
  * Uses atomic transaction processing for zero-race-condition durability.
  */
 export async function processOutboxEvents(limit = 10): Promise<number> {
+  // Recover stale events stuck in PROCESSING for over 5 minutes
+  await prisma.outboxEvent
+    .updateMany({
+      where: {
+        status: 'PROCESSING',
+        updatedAt: { lte: new Date(Date.now() - 5 * 60 * 1000) },
+      },
+      data: {
+        status: 'PENDING',
+      },
+    })
+    .catch(() => {});
+
   let eventsToProcess: Array<{
     id: string;
     workspaceId: string;
@@ -76,18 +89,36 @@ export async function processOutboxEvents(limit = 10): Promise<number> {
 
   for (const event of eventsToProcess) {
     try {
-      const payload = event.payload as Record<string, unknown>;
+      const payload = (event.payload ?? {}) as Record<string, unknown>;
 
       switch (event.eventType) {
-        case 'CHAT_TURN_COMPLETED':
-          if (typeof payload.contactId === 'string' && Array.isArray(payload.messages)) {
-            await extractCustomerIntelligence(
-              event.workspaceId,
-              payload.contactId,
-              payload.messages,
-            );
+        case 'CHAT_TURN_COMPLETED': {
+          const conversationId =
+            typeof payload.conversationId === 'string' ? payload.conversationId : null;
+          const contactId = typeof payload.contactId === 'string' ? payload.contactId : null;
+
+          if (conversationId && contactId) {
+            const conversation = await prisma.conversation.findFirst({
+              where: { id: conversationId, workspaceId: event.workspaceId },
+              include: {
+                messages: {
+                  orderBy: { createdAt: 'asc' },
+                  take: 20,
+                  select: { role: true, content: true },
+                },
+              },
+            });
+
+            if (conversation && conversation.messages.length > 0) {
+              await extractCustomerIntelligence(
+                event.workspaceId,
+                contactId,
+                conversation.messages.map((m) => ({ role: m.role, content: m.content })),
+              );
+            }
           }
           break;
+        }
 
         case 'LEAD_SCORE_UPDATED':
           if (typeof payload.contactId === 'string') {
@@ -120,7 +151,7 @@ export async function processOutboxEvents(limit = 10): Promise<number> {
       processed++;
     } catch (err: unknown) {
       const errorMessage = err instanceof Error ? err.message : 'Unknown processing error';
-      const isDead = event.attempts + 1 >= event.maxAttempts;
+      const isDead = event.attempts >= event.maxAttempts;
 
       await prisma.outboxEvent.update({
         where: { id: event.id },

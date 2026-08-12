@@ -375,3 +375,112 @@ describe('audit integrity', () => {
     }
   });
 });
+
+describe('strict multi-tenant workspace isolation', () => {
+  it('strictly isolates retrieval and chat across independent workspaces', async () => {
+    const wsA = await prisma.workspace.create({
+      data: { name: 'Tenant Alpha Workspace', slug: `tenant-alpha-${Date.now()}` },
+    });
+    const wsB = await prisma.workspace.create({
+      data: { name: 'Tenant Beta Workspace', slug: `tenant-beta-${Date.now()}` },
+    });
+
+    const kbA = await prisma.knowledgeBase.create({
+      data: { workspaceId: wsA.id, name: 'Alpha KB', slug: `alpha-kb-${Date.now()}` },
+    });
+    const kbB = await prisma.knowledgeBase.create({
+      data: { workspaceId: wsB.id, name: 'Beta KB', slug: `beta-kb-${Date.now()}` },
+    });
+
+    const docA = await prisma.document.create({
+      data: {
+        knowledgeBaseId: kbA.id,
+        title: 'Alpha Secret Launch Manual',
+        sourceType: 'TXT',
+        accessLevel: 'PUBLIC',
+        checksum: `checksum-a-${Date.now()}`,
+        status: 'INDEXED',
+        chunkCount: 1,
+      },
+    });
+
+    const docB = await prisma.document.create({
+      data: {
+        knowledgeBaseId: kbB.id,
+        title: 'Beta Secret Launch Manual',
+        sourceType: 'TXT',
+        accessLevel: 'PUBLIC',
+        checksum: `checksum-b-${Date.now()}`,
+        status: 'INDEXED',
+        chunkCount: 1,
+      },
+    });
+
+    const verA = await prisma.documentVersion.create({
+      data: {
+        documentId: docA.id,
+        version: 1,
+        checksum: `hash-a-${Date.now()}`,
+        storagePath: `path-a-${Date.now()}`,
+      },
+    });
+
+    const verB = await prisma.documentVersion.create({
+      data: {
+        documentId: docB.id,
+        version: 1,
+        checksum: `hash-b-${Date.now()}`,
+        storagePath: `path-b-${Date.now()}`,
+      },
+    });
+
+    await prisma.documentChunk.create({
+      data: {
+        knowledgeBaseId: kbA.id,
+        documentId: docA.id,
+        documentVersionId: verA.id,
+        chunkIndex: 0,
+        content: 'The secret launch codename for Workspace A is ORION.',
+        accessLevel: 'PUBLIC',
+        tokenCount: 10,
+      },
+    });
+
+    await prisma.documentChunk.create({
+      data: {
+        knowledgeBaseId: kbB.id,
+        documentId: docB.id,
+        documentVersionId: verB.id,
+        chunkIndex: 0,
+        content: 'The secret launch codename for Workspace B is NEBULA.',
+        accessLevel: 'PUBLIC',
+        tokenCount: 10,
+      },
+    });
+
+    const settings = await getRetrievalSettings();
+
+    const resA = await retrieve({
+      question: 'What is the secret launch codename?',
+      role: 'PUBLIC',
+      workspaceId: wsA.id,
+      knowledgeBaseId: kbA.id,
+      settings,
+    });
+
+    expect(resA.chunks.some((c) => c.content.includes('ORION'))).toBe(true);
+    expect(resA.chunks.some((c) => c.content.includes('NEBULA'))).toBe(false);
+
+    const resCross = await retrieve({
+      question: 'What is the secret launch codename?',
+      role: 'PUBLIC',
+      workspaceId: wsA.id,
+      knowledgeBaseId: kbB.id,
+      settings,
+    });
+
+    expect(resCross.chunks).toHaveLength(0);
+
+    await prisma.workspace.deleteMany({ where: { id: { in: [wsA.id, wsB.id] } } });
+  });
+});

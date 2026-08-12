@@ -18,6 +18,7 @@ import { prisma } from '@/lib/database/client';
 
 export interface VectorSearchFilters {
   allowedAccessLevels: AccessLevel[];
+  workspaceId?: string | null;
   knowledgeBaseId?: string | null;
   documentId?: string | null;
   limit: number;
@@ -116,6 +117,9 @@ function buildFilterSql(filters: VectorSearchFilters): Prisma.Sql {
     Prisma.sql`d."status" = 'INDEXED'`,
     Prisma.sql`d."archivedAt" IS NULL`,
   ];
+  if (filters.workspaceId) {
+    clauses.push(Prisma.sql`kb."workspaceId" = ${filters.workspaceId}`);
+  }
   if (filters.knowledgeBaseId) {
     clauses.push(Prisma.sql`c."knowledgeBaseId" = ${filters.knowledgeBaseId}`);
   }
@@ -152,6 +156,7 @@ export async function vectorSearch(
         (1 - (c."embedding" <=> ${literal}::vector))::float8 AS "score"
       FROM "DocumentChunk" c
       INNER JOIN "Document" d ON d."id" = c."documentId"
+      INNER JOIN "KnowledgeBase" kb ON kb."id" = c."knowledgeBaseId"
       WHERE c."embedding" IS NOT NULL AND ${buildFilterSql(filters)}
       ORDER BY c."embedding" <=> ${literal}::vector
       LIMIT ${filters.limit}
@@ -182,6 +187,7 @@ export async function vectorSearch(
           0.85::float8 AS "score"
         FROM "DocumentChunk" c
         INNER JOIN "Document" d ON d."id" = c."documentId"
+        INNER JOIN "KnowledgeBase" kb ON kb."id" = c."knowledgeBaseId"
         WHERE ${buildFilterSql(filters)}
         ORDER BY c."accessLevel" DESC, c."chunkIndex" ASC
         LIMIT ${filters.limit}
@@ -228,6 +234,7 @@ export async function keywordSearch(
       )::float8 AS "score"
     FROM "DocumentChunk" c
     INNER JOIN "Document" d ON d."id" = c."documentId"
+    INNER JOIN "KnowledgeBase" kb ON kb."id" = c."knowledgeBaseId"
     WHERE ${buildFilterSql(filters)}
       AND to_tsvector('english', coalesce(c."sectionTitle", '') || ' ' || c."content")
           @@ websearch_to_tsquery('english', ${cleaned})
@@ -266,6 +273,7 @@ export async function keywordSearch(
         )::float8 AS "score"
       FROM "DocumentChunk" c
       INNER JOIN "Document" d ON d."id" = c."documentId"
+      INNER JOIN "KnowledgeBase" kb ON kb."id" = c."knowledgeBaseId"
       WHERE ${buildFilterSql(filters)}
         AND to_tsvector('english', coalesce(c."sectionTitle", '') || ' ' || c."content")
             @@ to_tsquery('english', ${orExpr})

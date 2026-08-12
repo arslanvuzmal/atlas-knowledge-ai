@@ -226,39 +226,84 @@ export async function ask(input: AskInput): Promise<AskOutput> {
 
     // Authorize knowledge base against current workspace context
     const wsContext = await getCurrentWorkspaceContext().catch(() => null);
-    let targetKbId = input.knowledgeBaseId ?? null;
+    let targetKbId: string | null = null;
 
-    if (targetKbId && wsContext) {
-      const authorizedKb = await prisma.knowledgeBase.findFirst({
-        where: { id: targetKbId, workspaceId: wsContext.id },
-      });
-      if (!authorizedKb) {
-        log.warn('Knowledge base not authorized for current workspace context', {
-          requestedKbId: targetKbId,
-          workspaceId: wsContext.id,
+    if (wsContext) {
+      if (input.knowledgeBaseId) {
+        const authorizedKb = await prisma.knowledgeBase.findFirst({
+          where: { id: input.knowledgeBaseId, workspaceId: wsContext.id },
         });
-        targetKbId = null;
+        if (authorizedKb) {
+          targetKbId = authorizedKb.id;
+        } else {
+          log.warn('Knowledge base not authorized for current workspace context', {
+            requestedKbId: input.knowledgeBaseId,
+            workspaceId: wsContext.id,
+          });
+        }
+      } else {
+        const defaultKb = await prisma.knowledgeBase.findFirst({
+          where: { workspaceId: wsContext.id },
+          orderBy: { createdAt: 'asc' },
+        });
+        if (defaultKb) {
+          targetKbId = defaultKb.id;
+        }
       }
     }
 
-    retrieval = await retrieve({
-      question: routeRes.cleanQuestion || input.question,
-      role: input.role,
-      knowledgeBaseId: targetKbId,
-      history,
-      settings,
-      traceId,
-    });
+    if (!targetKbId || !wsContext) {
+      // DO NOT RETRIEVE! Return controlled refusal/access response
+      answer = {
+        text: 'No authorized knowledge base is configured or accessible for this workspace context.',
+        grounding: null,
+        confidence: null,
+        citations: [],
+        provider: 'local',
+        model: 'governance-guard',
+        latencyMs: Date.now() - startedAt,
+        isDemo: false,
+        sourceType: 'LOCAL',
+        escalationSuggested: true,
+        escalationReason: 'Workspace has no authorized knowledge base context.',
+        relatedSources: [],
+        evidence: {
+          confidenceLabel: 'N/A',
+          supportingPassages: 0,
+          supportingDocuments: 0,
+          coverage: 0,
+          conflictDetected: false,
+          conflictingDocuments: [],
+        },
+        diagnostics: {
+          invalidCitationMarkers: [],
+          usedFallbackCitations: false,
+          promptTokens: 0,
+          truncatedSources: 0,
+          generationFailed: false,
+        },
+      };
+    } else {
+      retrieval = await retrieve({
+        question: routeRes.cleanQuestion || input.question,
+        role: input.role,
+        workspaceId: wsContext.id,
+        knowledgeBaseId: targetKbId,
+        history,
+        settings,
+        traceId,
+      });
 
-    answer = await generateAnswer({
-      question: routeRes.cleanQuestion || input.question,
-      role: input.role,
-      retrieval,
-      history,
-      settings,
-      modelSettings,
-      traceId,
-    });
+      answer = await generateAnswer({
+        question: routeRes.cleanQuestion || input.question,
+        role: input.role,
+        retrieval,
+        history,
+        settings,
+        modelSettings,
+        traceId,
+      });
+    }
   }
 
   const totalLatency = Date.now() - startedAt;
@@ -348,85 +393,86 @@ export async function ask(input: AskInput): Promise<AskOutput> {
     });
   }
 
-  // --- Async Non-Blocking CRM & Outbox Enrichment ----------------------------
-  try {
-    const wsContext = await getCurrentWorkspaceContext().catch(() => null);
-    const workspaceId = wsContext?.id ?? null;
+  // --- Async Non-Blocking CRM, Outbox & Knowledge Gap Background Tasks ------
+  void (async () => {
+    try {
+      const wsContext = await getCurrentWorkspaceContext().catch(() => null);
+      const workspaceId = wsContext?.id ?? null;
 
-    if (workspaceId) {
-      const emailMatch = input.question.match(/([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})/);
-      const extractedEmail = emailMatch ? emailMatch[1] : undefined;
+      if (workspaceId) {
+        const emailMatch = input.question.match(/([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})/);
+        const extractedEmail = emailMatch ? emailMatch[1] : undefined;
 
-      const nameMatch = input.question.match(
-        /(?:my name is|i am|i'm)\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)/i,
-      );
-      const extractedName = nameMatch ? nameMatch[1] : undefined;
+        const nameMatch = input.question.match(
+          /(?:my name is|i am|i'm)\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)/i,
+        );
+        const extractedName = nameMatch ? nameMatch[1] : undefined;
 
-      const contact = await resolveIdentity({
-        workspaceId,
-        visitorKey: input.anonymousKey ?? undefined,
-        email: extractedEmail,
-        name: extractedName,
-      });
-
-      try {
-        await prisma.conversation.update({
-          where: { id: conversationId },
-          data: { contactId: contact.id, updatedAt: new Date() },
+        const contact = await resolveIdentity({
+          workspaceId,
+          visitorKey: input.anonymousKey ?? undefined,
+          email: extractedEmail,
+          name: extractedName,
         });
-      } catch (convErr) {
-        log.warn('Conversation contact update failed (non-blocking)', {
-          error: convErr instanceof Error ? convErr.message : String(convErr),
+
+        try {
+          await prisma.conversation.update({
+            where: { id: conversationId },
+            data: { contactId: contact.id, updatedAt: new Date() },
+          });
+        } catch (convErr) {
+          log.warn('Conversation contact update failed (non-blocking)', {
+            error: convErr instanceof Error ? convErr.message : String(convErr),
+          });
+        }
+
+        await enqueueOutboxEvent({
+          workspaceId,
+          eventType: 'CHAT_TURN_COMPLETED',
+          payload: {
+            contactId: contact.id,
+            conversationId,
+            userMessageId: userMessage.id,
+            assistantMessageId: assistantMessage.id,
+          },
+        });
+
+        void processOutboxEvents(5).catch(() => {});
+      }
+    } catch (crmError) {
+      log.warn('CRM / Outbox post-processing failed (non-blocking)', {
+        error: crmError instanceof Error ? crmError.message : String(crmError),
+      });
+    }
+
+    if (retrieval) {
+      try {
+        await trackKnowledgeGap({
+          question: input.question,
+          role: input.role,
+          knowledgeBaseId: input.knowledgeBaseId ?? null,
+          retrieval: {
+            confidence: retrieval.confidence.confidence,
+            grounding: retrieval.grounding,
+            chunks: retrieval.chunks.map((c) => ({
+              documentId: c.documentId,
+              documentTitle: c.documentTitle,
+              content: c.content,
+            })),
+          },
+          answer: {
+            grounding: answer.grounding ?? 'UNSUPPORTED',
+            text: answer.text,
+            escalationSuggested: answer.escalationSuggested,
+          },
+        });
+      } catch (kgError) {
+        log.warn('Knowledge-gap tracking failed (non-blocking)', {
+          error: kgError instanceof Error ? kgError.message : String(kgError),
         });
       }
-
-      await enqueueOutboxEvent({
-        workspaceId,
-        eventType: 'CHAT_TURN_COMPLETED',
-        payload: {
-          contactId: contact.id,
-          conversationId,
-          userMessageId: userMessage.id,
-          assistantMessageId: assistantMessage.id,
-        },
-      });
-
-      void processOutboxEvents(5).catch(() => {});
     }
-  } catch (crmError) {
-    log.warn('CRM / Outbox post-processing failed (non-blocking)', {
-      error: crmError instanceof Error ? crmError.message : String(crmError),
-    });
-  }
-
-  // --- Async Knowledge Gap Tracking (Only for Governed RAG queries) ----------
-  if (retrieval) {
-    try {
-      await trackKnowledgeGap({
-        question: input.question,
-        role: input.role,
-        knowledgeBaseId: input.knowledgeBaseId ?? null,
-        retrieval: {
-          confidence: retrieval.confidence.confidence,
-          grounding: retrieval.grounding,
-          chunks: retrieval.chunks.map((c) => ({
-            documentId: c.documentId,
-            documentTitle: c.documentTitle,
-            content: c.content,
-          })),
-        },
-        answer: {
-          grounding: answer.grounding ?? 'UNSUPPORTED',
-          text: answer.text,
-          escalationSuggested: answer.escalationSuggested,
-        },
-      });
-    } catch (kgError) {
-      log.warn('Knowledge-gap tracking failed (non-blocking)', {
-        error: kgError instanceof Error ? kgError.message : String(kgError),
-      });
-    }
-  }
+  })();
 
   return {
     conversationId,

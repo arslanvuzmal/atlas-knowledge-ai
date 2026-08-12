@@ -32,6 +32,7 @@ import type { GroundingLevel } from '@prisma/client';
 export interface RetrievalRequest {
   question: string;
   role: Role;
+  workspaceId?: string | null;
   knowledgeBaseId?: string | null;
   documentId?: string | null;
   history?: ConversationTurn[];
@@ -70,6 +71,7 @@ export async function retrieve(request: RetrievalRequest): Promise<RetrievalResu
 
   const filters = {
     allowedAccessLevels: allowed,
+    workspaceId: request.workspaceId ?? null,
     knowledgeBaseId: request.knowledgeBaseId ?? null,
     documentId: request.documentId ?? null,
     limit: settings.retrievalCount,
