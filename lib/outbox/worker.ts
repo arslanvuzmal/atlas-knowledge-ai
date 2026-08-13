@@ -1,6 +1,8 @@
 import { prisma } from '@/lib/database/client';
 import { extractCustomerIntelligence } from '@/lib/crm/intelligence';
+import { resolveIdentity } from '@/lib/crm/contact';
 import { evaluateAutomationRules } from '@/lib/automation/rules';
+import { trackKnowledgeGap } from '@/lib/knowledge-gap';
 
 export interface EnqueueOutboxInput {
   workspaceId: string;
@@ -95,7 +97,29 @@ export async function processOutboxEvents(limit = 10): Promise<number> {
         case 'CHAT_TURN_COMPLETED': {
           const conversationId =
             typeof payload.conversationId === 'string' ? payload.conversationId : null;
-          const contactId = typeof payload.contactId === 'string' ? payload.contactId : null;
+          let contactId = typeof payload.contactId === 'string' ? payload.contactId : null;
+
+          // Identity Resolution
+          if (!contactId && event.workspaceId) {
+            try {
+              const contact = await resolveIdentity({
+                workspaceId: event.workspaceId,
+                visitorKey: (payload.anonymousKey as string) ?? undefined,
+                email: (payload.extractedEmail as string) ?? undefined,
+                name: (payload.extractedName as string) ?? undefined,
+              });
+              contactId = contact.id;
+
+              if (conversationId) {
+                await prisma.conversation.updateMany({
+                  where: { id: conversationId },
+                  data: { contactId: contact.id, updatedAt: new Date() },
+                });
+              }
+            } catch {
+              // Identity resolution optional fallback
+            }
+          }
 
           if (conversationId && contactId) {
             const conversation = await prisma.conversation.findFirst({
@@ -114,8 +138,23 @@ export async function processOutboxEvents(limit = 10): Promise<number> {
                 event.workspaceId,
                 contactId,
                 conversation.messages.map((m) => ({ role: m.role, content: m.content })),
-              );
+              ).catch(() => {});
             }
+          }
+
+          // Knowledge Gap Tracking
+          if (payload.retrieval && payload.answer && payload.question && payload.role) {
+            await trackKnowledgeGap({
+              question: payload.question as string,
+              role: payload.role as unknown as Parameters<typeof trackKnowledgeGap>[0]['role'],
+              knowledgeBaseId: (payload.knowledgeBaseId as string) ?? null,
+              retrieval: payload.retrieval as unknown as Parameters<
+                typeof trackKnowledgeGap
+              >[0]['retrieval'],
+              answer: payload.answer as unknown as Parameters<
+                typeof trackKnowledgeGap
+              >[0]['answer'],
+            }).catch(() => {});
           }
           break;
         }

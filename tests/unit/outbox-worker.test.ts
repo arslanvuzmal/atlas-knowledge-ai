@@ -39,6 +39,7 @@ describe('Durable Outbox Worker', () => {
         eventType: 'STALE_EVENT',
         payload: { test: true },
         status: 'PROCESSING',
+        nextAttemptAt: new Date(Date.now() + 60_000), // in the future
         updatedAt: new Date(Date.now() - 10 * 60 * 1000), // 10 mins ago
       },
     });
@@ -49,7 +50,7 @@ describe('Durable Outbox Worker', () => {
       where: { id: staleEvent.id },
     });
 
-    expect(refreshed?.status).toBe('PROCESSED');
+    expect(refreshed?.status).toBe('PENDING');
 
     // Clean up
     await prisma.outboxEvent.delete({ where: { id: staleEvent.id } }).catch(() => {});

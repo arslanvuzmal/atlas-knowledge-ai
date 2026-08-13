@@ -136,6 +136,41 @@ export async function vectorSearch(
 ): Promise<RetrievedChunkRow[]> {
   if (filters.allowedAccessLevels.length === 0) return [];
 
+  const { installed } = await checkVectorExtension();
+  if (!installed) {
+    if (filters.queryText) {
+      const kw = await keywordSearch(filters.queryText, filters);
+      if (kw.length > 0) return kw;
+    }
+    try {
+      const rows = await prisma.$queryRaw<RetrievedChunkRow[]>`
+        SELECT
+          c."id",
+          c."documentId",
+          c."documentVersionId",
+          c."chunkIndex",
+          c."content",
+          c."pageNumber",
+          c."sectionTitle",
+          c."accessLevel",
+          c."knowledgeBaseId",
+          d."title"      AS "documentTitle",
+          d."sourceType"::text AS "documentSourceType",
+          d."sourceUrl"  AS "documentSourceUrl",
+          0.85::float8 AS "score"
+        FROM "DocumentChunk" c
+        INNER JOIN "Document" d ON d."id" = c."documentId"
+        INNER JOIN "KnowledgeBase" kb ON kb."id" = c."knowledgeBaseId"
+        WHERE ${buildFilterSql(filters)}
+        ORDER BY c."accessLevel" DESC, c."chunkIndex" ASC
+        LIMIT ${filters.limit}
+      `;
+      return rows;
+    } catch {
+      return [];
+    }
+  }
+
   const literal = toVectorLiteral(queryVector);
 
   try {
