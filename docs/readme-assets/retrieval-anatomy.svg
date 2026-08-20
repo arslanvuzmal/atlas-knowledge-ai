@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="470" viewBox="0 0 1200 470" role="img" aria-labelledby="title desc">
+  <title id="title">Retrieval decision anatomy</title><desc id="desc">Conceptual vector and lexical candidate rankings are fused by reciprocal rank fusion, filtered and reranked into authorized evidence.</desc>
+  <rect width="1200" height="470" rx="24" fill="#f8fafc"/>
+  <g font-family="ui-monospace, SFMono-Regular, Menlo, monospace">
+    <text x="52" y="52" font-size="14" font-weight="700" letter-spacing="2" fill="#4338ca">RETRIEVAL ANATOMY · CONCEPTUAL VALUES</text>
+    <rect x="52" y="84" width="1096" height="58" rx="10" fill="#eef2ff" stroke="#a5b4fc"/><text x="78" y="119" font-size="16" font-weight="700" fill="#1e1b4b">“How are enterprise refunds approved?”</text>
+    <g><rect x="52" y="178" width="314" height="190" rx="14" fill="#fff" stroke="#cbd5e1"/><text x="78" y="212" font-size="14" font-weight="800" fill="#4338ca">VECTOR RANK</text><text x="78" y="250" font-size="14" fill="#0f172a">1  p18   0.91</text><text x="78" y="282" font-size="14" fill="#0f172a">2  p31   0.85</text><text x="78" y="314" font-size="14" fill="#0f172a">3  p07   0.81</text><text x="78" y="348" font-size="12" fill="#64748b">semantic proximity</text></g>
+    <g><rect x="404" y="178" width="314" height="190" rx="14" fill="#fff" stroke="#cbd5e1"/><text x="430" y="212" font-size="14" font-weight="800" fill="#0e7490">FULL-TEXT RANK</text><text x="430" y="250" font-size="14" fill="#0f172a">1  p31   refund + approval</text><text x="430" y="282" font-size="14" fill="#0f172a">2  p18   enterprise</text><text x="430" y="314" font-size="14" fill="#0f172a">3  p44   refund</text><text x="430" y="348" font-size="12" fill="#64748b">exact terminology</text></g>
+    <g><rect x="756" y="178" width="392" height="190" rx="14" fill="#111827"/><text x="784" y="212" font-size="14" font-weight="800" fill="#a5b4fc">RRF → FILTER → RERANK</text><text x="784" y="250" font-size="14" fill="#f8fafc">01  p31  term coverage + title</text><text x="784" y="282" font-size="14" fill="#f8fafc">02  p18  strong dual retrieval</text><text x="784" y="314" font-size="14" fill="#94a3b8">—   p44  outside access level</text><text x="784" y="348" font-size="12" fill="#6ee7b7">AUTHORIZED EVIDENCE SET</text></g>
+    <g fill="none" stroke="#6366f1" stroke-width="2"><path d="M366 273h30"/><path d="M718 273h30"/></g>
+    <text x="600" y="425" text-anchor="middle" font-size="13" fill="#64748b">RRF merges ordinal evidence; it does not pretend cosine similarity and text-search rank share a scale.</text>
+  </g>
+</svg>

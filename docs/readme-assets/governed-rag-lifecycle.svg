@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="470" viewBox="0 0 1200 470" role="img" aria-labelledby="title desc">
+  <title id="title">Animated governed RAG lifecycle</title>
+  <desc id="desc">A question is scoped by identity, filtered by access, retrieved through vector and full-text search, reranked, grounded, generated, and citation-validated.</desc>
+  <defs><marker id="a" markerWidth="7" markerHeight="7" refX="6" refY="3.5" orient="auto"><path d="M0 0l7 3.5L0 7z" fill="#6366f1"/></marker></defs>
+  <rect width="1200" height="470" rx="24" fill="#f8fafc"/>
+  <g font-family="ui-monospace, SFMono-Regular, Menlo, monospace">
+    <text x="52" y="52" font-size="14" font-weight="700" letter-spacing="2" fill="#4338ca">GOVERNED KNOWLEDGE PATH</text>
+    <g fill="#fff" stroke="#cbd5e1" stroke-width="1.5">
+      <rect x="52" y="91" width="132" height="58" rx="10"/><rect x="220" y="91" width="132" height="58" rx="10"/><rect x="388" y="91" width="170" height="58" rx="10"/>
+      <rect x="604" y="62" width="154" height="52" rx="10"/><rect x="604" y="128" width="154" height="52" rx="10"/><rect x="804" y="91" width="132" height="58" rx="10"/><rect x="972" y="91" width="174" height="58" rx="10"/>
+    </g>
+    <g font-size="14" font-weight="700" fill="#0f172a" text-anchor="middle"><text x="118" y="126">QUESTION</text><text x="286" y="126">IDENTITY</text><text x="473" y="117">ACCESS FILTER</text><text x="473" y="137" font-size="11" fill="#64748b">SQL PREDICATE</text><text x="681" y="94">VECTOR</text><text x="681" y="160">POSTGRES FTS</text><text x="870" y="126">RRF</text><text x="1059" y="126">RERANK</text></g>
+    <g stroke="#6366f1" stroke-width="2" fill="none" marker-end="url(#a)"><path d="M184 120h28"/><path d="M352 120h28"/><path d="M558 120h34"/><path d="M758 88l38 25"/><path d="M758 154l38-25"/><path d="M936 120h28"/></g>
+    <g fill="#fff" stroke="#cbd5e1" stroke-width="1.5"><rect x="94" y="247" width="174" height="64" rx="10"/><rect x="312" y="247" width="174" height="64" rx="10"/><rect x="530" y="247" width="174" height="64" rx="10"/><rect x="748" y="247" width="174" height="64" rx="10"/></g>
+    <g font-size="14" font-weight="700" fill="#0f172a" text-anchor="middle"><text x="181" y="275">ACCESS RECHECK</text><text x="181" y="294" font-size="11" fill="#64748b">DEFENCE IN DEPTH</text><text x="399" y="275">GROUNDING</text><text x="399" y="294" font-size="11" fill="#64748b">PRE-GENERATION</text><text x="617" y="285">GENERATE</text><text x="835" y="275">CITATION</text><text x="835" y="294">VALIDATOR</text></g>
+    <g stroke="#6366f1" stroke-width="2" fill="none" marker-end="url(#a)"><path d="M1059 157v45H181v37"/><path d="M268 279h36"/><path d="M486 279h36"/><path d="M704 279h36"/></g>
+    <rect x="968" y="238" width="178" height="82" rx="12" fill="#ecfdf5" stroke="#34d399" stroke-width="1.5"/><text x="1057" y="271" text-anchor="middle" font-size="14" font-weight="800" fill="#065f46">VERIFIED ANSWER</text><text x="1057" y="294" text-anchor="middle" font-size="12" fill="#475569">or refusal / escalation</text>
+    <path d="M922 279h38" stroke="#10b981" stroke-width="2" marker-end="url(#a)"/>
+    <circle r="6" fill="#06b6d4"><animateMotion dur="8s" repeatCount="indefinite" path="M52 120 H560 L604 88 H758 L804 120 H1146 V202 H181 V279 H1146"/></circle>
+    <g font-size="12" fill="#64748b"><text x="52" y="395">Unauthorized rows never become retrieval candidates.</text><text x="52" y="420">Unsupported evidence stops before the language-model call.</text><text x="52" y="445">Citation markers are accepted only when they resolve to retrieved passages.</text></g>
+  </g>
+</svg>

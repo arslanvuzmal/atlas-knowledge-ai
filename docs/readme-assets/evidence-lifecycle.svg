@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="300" viewBox="0 0 1200 300" role="img" aria-labelledby="title desc">
+  <title id="title">SourceLatch evidence lifecycle</title><desc id="desc">Knowledge progresses from untrusted source through validation, classification, indexing, authorization, retrieval, grounding, citation, and verification.</desc>
+  <rect width="1200" height="300" rx="24" fill="#111827"/>
+  <g font-family="ui-monospace, SFMono-Regular, Menlo, monospace">
+    <text x="50" y="48" font-size="13" font-weight="700" letter-spacing="2" fill="#a5b4fc">EVIDENCE LIFECYCLE</text>
+    <path d="M80 153H1120" stroke="#334155" stroke-width="4"/>
+    <g text-anchor="middle" font-size="11" font-weight="700">
+      <g transform="translate(90 153)"><circle r="18" fill="#ef4444"/><text y="42" fill="#cbd5e1">SOURCE</text><text y="58" fill="#64748b">untrusted</text></g>
+      <g transform="translate(217 153)"><circle r="18" fill="#6366f1"/><text y="42" fill="#cbd5e1">VALIDATED</text></g>
+      <g transform="translate(344 153)"><circle r="18" fill="#6366f1"/><text y="42" fill="#cbd5e1">CLASSIFIED</text></g>
+      <g transform="translate(471 153)"><circle r="18" fill="#06b6d4"/><text y="42" fill="#cbd5e1">INDEXED</text></g>
+      <g transform="translate(598 153)"><circle r="18" fill="#06b6d4"/><text y="42" fill="#cbd5e1">AUTHORIZED</text></g>
+      <g transform="translate(725 153)"><circle r="18" fill="#06b6d4"/><text y="42" fill="#cbd5e1">RETRIEVED</text></g>
+      <g transform="translate(852 153)"><circle r="18" fill="#f59e0b"/><text y="42" fill="#cbd5e1">GROUNDED</text></g>
+      <g transform="translate(979 153)"><circle r="18" fill="#10b981"/><text y="42" fill="#cbd5e1">CITED</text></g>
+      <g transform="translate(1110 153)"><circle r="18" fill="#10b981"/><text y="42" fill="#cbd5e1">VERIFIED</text></g>
+    </g>
+    <text x="600" y="267" text-anchor="middle" font-size="13" fill="#94a3b8">Existence in the corpus is not evidence of permission, support, or citation integrity.</text>
+  </g>
+</svg>
